@@ -56,6 +56,8 @@ enum Actions {
 
     /// Every action shows what ran, except ones whose result is already obvious on screen.
     private static func hudInfo(_ a: Action) -> (String, String)? {
+        // Video actions report for themselves (they may decline when no video is in front).
+        if SmartActions.videoTypes.contains(a.type) && SmartActions.browsers.contains(AppContext.shared.bundleID ?? "") { return nil }
         let visual: Set<String> = ["missionControl", "appWindows", "showDesktop", "spotlight", "screenshot",
                                    "lockScreen", "sleepDisplay", "fullScreen", "middleClick", "emojiPicker", "forceQuit",
                                    "volumeUp", "volumeDown", "brightnessUp", "brightnessDown",   // these show the level HUD

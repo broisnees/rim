@@ -449,6 +449,14 @@ if CommandLine.arguments.contains("--gesture-test") {
           "seek keys match each player (browsers ←/→, VLC ⌘⌥←/→, QuickTime full screen ⌃⌘F)")
     GestureEngine.testConfig = cfg
 
+    // Video keys only reach browser tabs that are video sites (arrow keys would scroll other pages sideways).
+    check(SmartActions.isVideoContext(bundle: "com.google.Chrome", windowTitle: "Big Buck Bunny - YouTube")
+          && SmartActions.isVideoContext(bundle: "com.apple.Safari", windowTitle: "Netflix")
+          && !SmartActions.isVideoContext(bundle: "com.google.Chrome", windowTitle: "Hacker News")
+          && !SmartActions.isVideoContext(bundle: "com.apple.Safari", windowTitle: nil)
+          && SmartActions.isVideoContext(bundle: "com.colliderli.iina", windowTitle: "anything.mkv"),
+          "seek keys go to video tabs and players only, never to ordinary web pages")
+
     // Real-hand swipes (measured): 8–21 mm at 70–200 mm/s must all fire with a 19 mm step.
     var real = cfg
     real.edges.bottom.stepMM = 18.9
