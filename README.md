@@ -64,6 +64,20 @@ Use **Touch Visualizer…** to see the zones and your fingers live. **Debug Log*
 
 Editing (copy, paste, cut, paste & match style, undo, redo, select all, find, save) · scrolling & zoom (page up/down, top, bottom, zoom in/out, actual size) · controls (volume, brightness and keyboard-light up/down, keyboard light on/off) · media · windows (halves, fill, center, next display, minimize, full screen, new/close window) · app-aware tabs, sidebar, back/forward · middle click, previous app, emoji picker, force quit · Mission Control, desktop, Spotlight, screenshot, lock, sleep display · open app, run Shortcut, press keys, open URL, run command.
 
+### Real-world edge setups (Zones → click an edge → Presets)
+
+| Preset | Slide | Tap / double-tap |
+|---|---|---|
+| **Video Scrubber** | seek forward / back with acceleration and momentum | play-pause / full screen |
+| **Scroll Strip** | one-finger scrolling of whatever is under the pointer, with inertia | |
+| **App Switcher** | move through ⌘-Tab, lift to switch (⌘ is released on every exit path) | |
+| **Slides & Photos** | next / previous slide or photo | |
+| **Window Cycler** | cycle the front app's windows (⌘\`) | |
+| Switch Tabs · Desktops · Zoom · Undo/Redo · Tracks · Back/Forward · Page Up/Down · Window halves · Copy/Paste · Volume · Brightness · Keyboard Light | | |
+
+Video actions adapt to the player: web players (YouTube, Netflix, Vimeo…), IINA, VLC, QuickTime, Apple TV and Spotify,
+with per-app overrides in Per-App Rules.
+
 ### Edge feel (inspired by how Mac Mouse Fix animates scrolling)
 
 - Edge sliders: volume, brightness or **keyboard light**, with speed-dependent acceleration.
