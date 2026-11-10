@@ -162,6 +162,7 @@ final class EventGate {
     private func resetLocked() {
         owner = nil
         fingerDown = false
+        if pinnedCursor != nil { PointerFreeze.unfreeze() }   // any reset shows the real pointer again
         captureAll = false
         pinnedCursor = nil
         held = CGVector(dx: 0, dy: 0)
@@ -180,6 +181,7 @@ final class EventGate {
         heartbeatAt = now
         pinnedCursor = captureAll ? CGEvent(source: nil)?.location : nil
         held = CGVector(dx: 0, dy: 0)
+        if let pin = pinnedCursor { PointerFreeze.freeze(at: pin) }
     }
 
     /// Called on every multitouch frame while a session is active.
@@ -191,7 +193,10 @@ final class EventGate {
         lock.lock(); defer { lock.unlock() }
         captureAll = true
         heartbeatAt = now
-        if pinnedCursor == nil { pinnedCursor = CGEvent(source: nil)?.location }
+        if pinnedCursor == nil, let pin = CGEvent(source: nil)?.location {
+            pinnedCursor = pin
+            PointerFreeze.freeze(at: pin)
+        }
     }
 
     /// Swallow clicks for a moment without touching session state (multi-finger taps).
@@ -205,6 +210,7 @@ final class EventGate {
         lock.lock()
         let target: CGPoint? = giveBack && (held.dx != 0 || held.dy != 0)
             ? pinnedCursor.map { CGPoint(x: $0.x + held.dx, y: $0.y + held.dy) } : nil
+        let pin = pinnedCursor
         owner = nil
         fingerDown = false
         captureAll = false
@@ -212,7 +218,12 @@ final class EventGate {
         held = CGVector(dx: 0, dy: 0)
         if seconds > 0 { dropClicksUntil = now + seconds }
         lock.unlock()
-        if let target { warp(Self.clampToScreens(target)) }
+        if let target {
+            warp(Self.clampToScreens(target))          // not a gesture: pointer lands where it would have been
+            PointerFreeze.unfreeze()
+        } else if let pin {
+            PointerFreeze.unfreeze(at: pin)           // gesture: pointer reappears exactly where it was
+        }
     }
 
     private static func clampToScreens(_ p: CGPoint) -> CGPoint {
