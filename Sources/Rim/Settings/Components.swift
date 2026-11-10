@@ -105,6 +105,8 @@ struct TrackpadView: View {
         case "volume": return "speaker.wave.2.fill"
         case "brightness": return "sun.max.fill"
         case "keyboard": return "light.max"
+        case "scroll": return e.vertical ? "scroll" : "arrow.left.and.right.text.vertical"
+        case "appSwitcher": return "square.stack.3d.forward.dottedline"
         case "actions" where b.slides: return e.vertical ? "arrow.up.arrow.down" : "arrow.left.arrow.right"
         default:
             let a = !b.tap.isNone ? b.tap : !b.doubleTap.isNone ? b.doubleTap : b.hold
@@ -305,7 +307,7 @@ struct TrackpadView: View {
         guard config.edges.enabled, !b.isNone else { return ("Add action", "") }
         let a = ActionCatalog.arrows(e)
         var title: String, detail: [String] = []
-        if b.continuous { title = ActionCatalog.sliderTitle(b.slide); detail.append("Slide") }
+        if b.continuous || b.isScroll || b.isSwitcher { title = ActionCatalog.sliderTitle(b.slide); detail.append("Slide") }
         else if b.slides {
             title = b.forward.isNone ? "\(a.backward) \(ActionCatalog.label(b.backward))" : "\(a.forward) \(ActionCatalog.label(b.forward))"
             if !b.forward.isNone && !b.backward.isNone { detail.append("\(a.backward) \(ActionCatalog.label(b.backward))") }
