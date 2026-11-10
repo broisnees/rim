@@ -1,0 +1,27 @@
+name: Bug report
+description: Something on the trackpad or in Settings doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did on the trackpad, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rim version
+      placeholder: "1.0.0 (Settings → General)"
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS version
+      placeholder: "MacBook Pro 14\" M3, macOS 26.1"
+  - type: textarea
+    id: log
+    attributes:
+      label: Debug log (optional)
+      description: Turn on Settings → General → Debug log, reproduce, then paste ~/Library/Logs/Rim.log.
+      render: text

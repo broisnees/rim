@@ -1,0 +1,15 @@
+name: Feature request
+description: A gesture, action or setting you'd like Rim to have
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to do?
+      description: Describe the gesture and the result, e.g. "slide the top edge to switch desktops".
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter to you?
