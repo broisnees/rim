@@ -171,6 +171,18 @@ if CommandLine.arguments.contains("--gate-test") {
     alive = !passes(.mouseMoved, move())
     check(!alive, "even with heartbeats, a capture longer than 8 s is released")
 
+    // Visual pointer freeze: every freeze is matched by exactly one unfreeze, on every exit path.
+    var freezes: [String] = []
+    PointerFreeze.testSink = { freezes.append($0) }
+    gate.begin(owner: engine, captureAll: true); gate.end(dropClicksFor: 0)
+    gate.begin(owner: engine, captureAll: true); gate.end(dropClicksFor: 0, giveBack: true)
+    gate.begin(owner: engine, captureAll: true); gate.reset()
+    gate.begin(owner: engine, captureAll: true); wait(0.3); _ = passes(.mouseMoved, move())     // watchdog release
+    gate.begin(owner: engine, captureAll: true); _ = passes(.leftMouseDown, down()); _ = passes(.leftMouseUp, up())  // physical click
+    check(freezes.filter { $0 == "freeze" }.count == 5 && freezes.filter { $0 == "unfreeze" }.count == 5,
+          "pointer hidden at gesture start and shown again on lift, give-back, reset, watchdog and click (\(freezes.count) calls)")
+    PointerFreeze.testSink = nil
+
     // Pointer freeze: motion during a zone touch is held back, and given back only if it wasn't a gesture.
     var warpedTo: CGPoint?
     gate.warp = { warpedTo = $0 }                         // never move the real pointer in tests
@@ -476,6 +488,20 @@ if CommandLine.arguments.contains("--gesture-test") {
 
     print(fails == 0 ? "ALL PASS" : "\(fails) FAILED")
     exit(fails == 0 ? 0 : 1)
+}
+
+if CommandLine.arguments.contains("--freeze-demo") {
+    // Visual check: freezes the pointer for 2 s (stand-in cursor drawn, real cursor hidden), then restores it.
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let resolved = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGSSetConnectionProperty") != nil
+    print("SetsCursorInBackground API available:", resolved)
+    let pin = CGEvent(source: nil)?.location ?? .zero
+    print("freezing at", pin)
+    PointerFreeze.freeze(at: pin)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { PointerFreeze.unfreeze(at: pin) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { print("unfrozen"); exit(0) }
+    app.run()
 }
 
 if CommandLine.arguments.contains("--bench") {
