@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for Rim. Intentionally empty: nothing is relaxed.
+  - Private frameworks (MultitouchSupport, DisplayServices) are Apple platform binaries, so library
+    validation already allows loading them.
+  - Event taps and Accessibility are user-granted TCC permissions, not entitlements.
+  - Not sandboxed: Accessibility event taps and raw multitouch are unavailable to sandboxed apps,
+    which is why Rim ships outside the Mac App Store.
+-->
+<plist version="1.0">
+<dict/>
+</plist>
