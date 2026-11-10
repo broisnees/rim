@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        SwitcherHold.release()
         EventGate.shared.stop()
         Learner.shared.saveIfNeeded()
     }
