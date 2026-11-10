@@ -418,6 +418,25 @@ if CommandLine.arguments.contains("--gesture-test") {
     SwitcherHold.testSink = nil
     GestureEngine.testConfig = cfg
 
+    // ---- Video scrubbing per app ----
+    var vc = cfg
+    vc.edges.bottom = EdgeBinding(slide: "actions", forward: Action("nextTrack"), backward: Action("previousTrack"), repeats: false)
+    var chrome = Config.AppRule(name: "Chrome")
+    chrome.edgeOverrides["bottom"] = SettingsModel.videoScrubber
+    vc.apps["com.google.Chrome"] = chrome
+    check(vc.resolved(for: "com.google.Chrome").edges.bottom.forward.type == "seekForward"
+          && vc.resolved(for: "com.apple.Music").edges.bottom.forward.type == "nextTrack",
+          "bottom edge scrubs video in Chrome, still skips tracks in Music")
+    GestureEngine.testConfig = vc.resolved(for: "com.google.Chrome")
+    let scrub = stroke((0.4, 0.05), (0.6, 0.05), duration: 0.8, settle: 0.1)
+    check(scrub.count >= 2 && scrub.allSatisfy { $0.hasSuffix(":seekForward") }, "slide right on the bottom edge seeks forward repeatedly → \(scrub.count)×")
+    check(SmartActions.resolvedKeys("seekForward", bundle: "com.google.Chrome") == "right"
+          && SmartActions.resolvedKeys("seekBackward", bundle: "com.apple.Safari") == "left"
+          && SmartActions.resolvedKeys("seekForward", bundle: "org.videolan.vlc") == "cmd+alt+right"
+          && SmartActions.resolvedKeys("videoFullscreen", bundle: "com.apple.QuickTimePlayerX") == "ctrl+cmd+f",
+          "seek keys match each player (browsers ←/→, VLC ⌘⌥←/→, QuickTime full screen ⌃⌘F)")
+    GestureEngine.testConfig = cfg
+
     // Real-hand swipes (measured): 8–21 mm at 70–200 mm/s must all fire with a 19 mm step.
     var real = cfg
     real.edges.bottom.stepMM = 18.9

@@ -62,6 +62,14 @@ enum SmartActions {
         }
     }
 
+    /// The keys a smart action sends in an app, without the menu-bar search (tests, diagnostics).
+    static func resolvedKeys(_ type: String, bundle: String) -> String? {
+        if let combo = ConfigStore.shared.current.smartKeys[bundle]?[type], !combo.isEmpty { return combo }
+        if let combo = mediaKeys[type]?[bundle] { return combo }
+        if type == "toggleSidebar", let combo = sidebarKeys[bundle] { return combo }
+        return defaults[type]
+    }
+
     static func perform(_ type: String) {
         let ctx = AppContext.shared
         let bundle = ctx.bundleID ?? ""

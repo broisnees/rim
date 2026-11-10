@@ -407,6 +407,10 @@ struct AppsPage: View {
                     panel.allowedContentTypes = [.application]
                     if panel.runModal() == .OK, let url = panel.url { model.addRule(fromAppAt: url) }
                 }
+                Button("Video Scrubber in Browsers & Players") {
+                    let n = model.addVideoScrubber()
+                    presetResult = n == 0 ? "No browsers or video players found." : "Bottom edge now scrubs video in \(n) app\(n == 1 ? "" : "s"); other apps keep their bottom edge."
+                }
                 Button("Add Drawing & Game Apps") {
                     let n = model.addCreativePresets()
                     presetResult = n == 0 ? "No new drawing or game apps found." : "Added \(n) app\(n == 1 ? "" : "s") with Rim turned off."
