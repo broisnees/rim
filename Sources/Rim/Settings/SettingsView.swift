@@ -224,14 +224,19 @@ struct ZoneEditor: View {
             Section { Toggle("Different in \(model.scopeName)", isOn: model.edgeOverridden(e)) }
         }
         Section {
-            Picker("Slide", selection: binding.slide) {
-                Text("Volume").tag("volume")
-                Text("Brightness").tag("brightness")
-                Text("Keyboard").tag("keyboard")
-                Text("Actions").tag("actions")
-                Text("Off").tag("none")
+            Picker("Slide along the edge", selection: binding.slide) {
+                Section("Levels") {
+                    Label("Volume", systemImage: "speaker.wave.2.fill").tag("volume")
+                    Label("Brightness", systemImage: "sun.max.fill").tag("brightness")
+                    Label("Keyboard Light", systemImage: "light.max").tag("keyboard")
+                }
+                Section("Navigate") {
+                    Label("Scroll", systemImage: "scroll").tag("scroll")
+                    Label("App Switcher", systemImage: "square.stack.3d.forward.dottedline").tag("appSwitcher")
+                }
+                Label("Run Actions", systemImage: e.vertical ? "arrow.up.arrow.down" : "arrow.left.arrow.right").tag("actions")
+                Label("Nothing", systemImage: "nosign").tag("none")
             }
-            .pickerStyle(.segmented)
             if b.slide == "actions" {
                 ActionField(title: "Slide \(e.vertical ? "up" : "right") \(arrows.forward)", action: binding.forward,
                             symbol: e.vertical ? "arrow.up" : "arrow.right")
@@ -247,7 +252,10 @@ struct ZoneEditor: View {
             Text(b.slide == "actions"
                  ? (b.repeats ? "Each \(Int(b.stepMM)) mm of sliding runs it again, with a tick you can feel."
                               : "One swipe runs it once; a quick flick counts too.")
-                 : b.continuous ? "Slide along the edge to change the \(ActionCatalog.sliderTitle(b.slide).lowercased())." : "Sliding does nothing on this edge.")
+                 : b.continuous ? "Slide along the edge to change the \(ActionCatalog.sliderTitle(b.slide).lowercased())."
+                 : b.isScroll ? "Slide to scroll whatever is under the pointer; flick to glide. Follows your natural-scrolling setting."
+                 : b.isSwitcher ? "Slide to move through the app switcher; lift your finger to switch."
+                 : "Sliding does nothing on this edge.")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .disabled(!editable)
@@ -330,6 +338,15 @@ struct EdgePreset {
     let binding: EdgeBinding
 
     static let all: [EdgePreset] = [
+        .init(name: "Video Scrubber", symbol: "play.rectangle",
+              binding: EdgeBinding(slide: "actions", forward: Action("seekForward"), backward: Action("seekBackward"), repeats: true,
+                                   stepMM: 8, tap: Action("playPause"), doubleTap: Action("videoFullscreen"))),
+        .init(name: "Scroll Strip", symbol: "scroll", binding: EdgeBinding(slide: "scroll")),
+        .init(name: "App Switcher", symbol: "square.stack.3d.forward.dottedline", binding: EdgeBinding(slide: "appSwitcher", stepMM: 12)),
+        .init(name: "Slides & Photos", symbol: "photo.on.rectangle",
+              binding: EdgeBinding(slide: "actions", forward: Action("keys", "right"), backward: Action("keys", "left"), repeats: false, stepMM: 12)),
+        .init(name: "Window Cycler", symbol: "macwindow.on.rectangle",
+              binding: EdgeBinding(slide: "actions", forward: Action("keys", "cmd+`"), backward: Action("keys", "cmd+shift+`"), repeats: true, stepMM: 16)),
         .init(name: "Volume", symbol: "speaker.wave.2.fill", binding: EdgeBinding(slide: "volume")),
         .init(name: "Brightness", symbol: "sun.max.fill", binding: EdgeBinding(slide: "brightness")),
         .init(name: "Keyboard Light", symbol: "light.max", binding: EdgeBinding(slide: "keyboard", tap: Action("keyboardLightToggle"))),

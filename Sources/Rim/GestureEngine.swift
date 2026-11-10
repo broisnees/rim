@@ -51,7 +51,7 @@ final class GestureEngine {
     private var multi = MultiFingerRecognizer()
 
     // Momentum (inertia) for repeating edge actions, and speed-up for consecutive slides.
-    private struct Momentum { let edge: Edge; var velocity: Double; var accum: Double; let token: Int }
+    private struct Momentum { let edge: Edge; var velocity: Double; var accum: Double; let token: Int; var scroll = false }
     private var momentum: Momentum?
     private var momentumToken = 0
     private var lastSlide: (edge: Edge, dir: Double, end: Double)?
@@ -60,6 +60,8 @@ final class GestureEngine {
 
     /// Physical drag, like Mac Mouse Fix's DragCurve: dv/dt = -k·|v|^p, stopping below `stopSpeed`.
     static let momentumStart = 120.0, momentumStop = 25.0, dragK = 4.5, dragP = 1.0
+    /// Scrolling glides longer, like trackpad inertia.
+    static let scrollMomentumStart = 60.0, scrollDragK = 2.6
     private let gate = EventGate.shared
 
     /// Test hooks: a fixed config, and a sink that records actions instead of running them.
@@ -140,6 +142,7 @@ final class GestureEngine {
         session = nil
         ignoreUntilLift = true
         SliderController.shared.end()
+        SwitcherHold.release()
     }
 
     // MARK: - Guards
@@ -192,6 +195,7 @@ final class GestureEngine {
         ignoreUntilLift = true
         gate.end(dropClicksFor: 0, giveBack: giveBack)
         SliderController.shared.end()
+        SwitcherHold.release()
     }
 
     private func finish(_ s: Session, time: Double, cfg: Config) {
@@ -228,6 +232,10 @@ final class GestureEngine {
                 gate.end(dropClicksFor: s.activated ? 0.3 : 0, giveBack: !s.activated && s.steps == 0 && !s.holdFired)
             }
             if s.activated && b.continuous { SliderController.shared.end() }
+            if b.isSwitcher { SwitcherHold.release() }
+            if s.activated && b.isScroll && cfg.edges.momentum && abs(s.velocity.velocity) >= Self.scrollMomentumStart {
+                startMomentum(e, velocity: s.velocity.velocity, accum: 0, scroll: true)
+            }
             if s.activated && b.slide == "actions" && b.repeats {
                 let v = s.velocity.velocity
                 lastSlide = (e, s.lastAlong >= s.stepAnchor ? 1 : -1, time)
@@ -284,9 +292,9 @@ final class GestureEngine {
 
     // MARK: - Momentum
 
-    private func startMomentum(_ e: Edge, velocity: Double, accum: Double) {
+    private func startMomentum(_ e: Edge, velocity: Double, accum: Double, scroll: Bool = false) {
         momentumToken += 1
-        momentum = Momentum(edge: e, velocity: velocity, accum: accum, token: momentumToken)
+        momentum = Momentum(edge: e, velocity: velocity, accum: accum, token: momentumToken, scroll: scroll)
         let token = momentumToken
         momentumQueue.asyncAfter(deadline: .now() + 1.0 / 90) { [weak self] in self?.momentumTick(token, last: Date()) }
     }
@@ -298,12 +306,20 @@ final class GestureEngine {
         let dt = min(now.timeIntervalSince(last), 1.0 / 30)
         let cfg = Self.testConfig ?? AppContext.shared.effectiveConfig
         let b = cfg.edges.binding(m.edge)
-        guard cfg.enabled, b.slide == "actions", b.repeats else { momentum = nil; return }
+        guard cfg.enabled, (b.slide == "actions" && b.repeats) || b.isScroll else { momentum = nil; return }
 
-        // Integrate drag, then convert travelled distance into steps.
+        // Integrate drag, then convert travelled distance into steps (or scroll pixels).
         let speed = abs(m.velocity)
-        let newSpeed = max(0, speed - Self.dragK * pow(speed, Self.dragP) * dt)
+        let drag = m.scroll ? Self.scrollDragK : Self.dragK
+        let newSpeed = max(0, speed - drag * pow(speed, Self.dragP) * dt)
         m.velocity = m.velocity < 0 ? -newSpeed : newSpeed
+        if m.scroll {
+            ScrollOutput.scroll(alongMM: m.velocity * dt, vertical: m.edge.vertical, gain: 1.6)
+            if newSpeed < Self.momentumStop { momentum = nil; return }
+            momentum = m
+            momentumQueue.asyncAfter(deadline: .now() + 1.0 / 90) { [weak self] in self?.momentumTick(token, last: now) }
+            return
+        }
         m.accum += m.velocity * dt          // glide covers ≈ (v₀ − stop) / k mm: 3–4 steps after a fast flick
         let step = max(4, b.stepMM)
         while abs(m.accum) >= step {
@@ -416,6 +432,7 @@ final class GestureEngine {
                 SliderController.shared.begin(kind)
                 announce("slider")
             }
+            if b.isScroll { ScrollOutput.reset(); announce("edgeScroll", zone: s.kind, text: "Scrolling") }
         }
 
         let a = s.filter.filter(pos, time: time)
@@ -424,6 +441,27 @@ final class GestureEngine {
 
         if b.continuous {
             SliderController.shared.drag(deltaMM: a - s.lastAlong, speed: abs(s.velocity.velocity), time: time)
+            return true
+        }
+
+        // Edge scrolling: accelerated like the pointer, fractions of a pixel carried over.
+        if b.isScroll {
+            let gain = Self.swipeBoost(abs(s.velocity.velocity)) * cfg.edges.speed
+            ScrollOutput.scroll(alongMM: a - s.lastAlong, vertical: e.vertical, gain: gain)
+            return true
+        }
+
+        // App switcher: every step moves the Cmd-Tab selection; Cmd is released when the finger lifts.
+        if b.isSwitcher {
+            s.stepAccum += a - s.lastAlong
+            let step = max(6, b.stepMM)
+            while abs(s.stepAccum) >= step {
+                let forward = s.stepAccum > 0
+                SwitcherHold.step(forward: e.vertical ? !forward : forward)   // down / right = next app
+                Haptics.play(.tick)
+                s.stepAccum -= forward ? step : -step
+                s.steps += 1
+            }
             return true
         }
 

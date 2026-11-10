@@ -25,6 +25,15 @@ enum ActionCatalog {
             .init(id: "previousTrack", title: "Previous Track", symbol: "backward.fill", input: .none),
             .init(id: "mute", title: "Mute", symbol: "speaker.slash.fill", input: .none),
         ]),
+        ("Video & Audio (adapts to the player)", [
+            .init(id: "seekForward", title: "Seek Forward", symbol: "goforward", input: .none),
+            .init(id: "seekBackward", title: "Seek Back", symbol: "gobackward", input: .none),
+            .init(id: "playbackFaster", title: "Play Faster", symbol: "hare", input: .none),
+            .init(id: "playbackSlower", title: "Play Slower", symbol: "tortoise", input: .none),
+            .init(id: "frameForward", title: "Next Frame", symbol: "forward.frame", input: .none),
+            .init(id: "frameBackward", title: "Previous Frame", symbol: "backward.frame", input: .none),
+            .init(id: "videoFullscreen", title: "Video Full Screen", symbol: "arrow.up.left.and.arrow.down.right", input: .none),
+        ]),
         ("Editing", [
             .init(id: "copy", title: "Copy", symbol: "doc.on.doc", input: .none),
             .init(id: "paste", title: "Paste", symbol: "doc.on.clipboard", input: .none),
@@ -110,7 +119,8 @@ enum ActionCatalog {
     }
 
     static func sliderTitle(_ slide: String) -> String {
-        ["volume": "Volume", "brightness": "Brightness", "keyboard": "Keyboard Light"][slide] ?? slide.capitalized
+        ["volume": "Volume", "brightness": "Brightness", "keyboard": "Keyboard Light",
+         "scroll": "Scroll", "appSwitcher": "App Switcher"][slide] ?? slide.capitalized
     }
 
     /// Arrows for an edge's slide directions.
@@ -119,7 +129,7 @@ enum ActionCatalog {
     /// One-line description of an edge: "Volume", "↑ Next Tab  ↓ Previous Tab", "Tap Play / Pause".
     static func edgeSummary(_ b: EdgeBinding, _ e: Edge) -> String {
         var parts: [String] = []
-        if b.continuous { parts.append(sliderTitle(b.slide)) }
+        if b.continuous || b.isScroll || b.isSwitcher { parts.append(sliderTitle(b.slide)) }
         else if b.slides {
             let a = arrows(e)
             if !b.forward.isNone { parts.append("\(a.forward) \(label(b.forward))") }

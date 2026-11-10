@@ -46,6 +46,7 @@ final class TouchSource {
         lock.lock(); engines.removeAll(); lock.unlock()
         EventGate.shared.reset()
         SliderController.shared.end()
+        SwitcherHold.release()
     }
 
     fileprivate func handle(device: UnsafeMutableRawPointer?, touches: UnsafePointer<TFTouch>?, count: Int, time: Double) {

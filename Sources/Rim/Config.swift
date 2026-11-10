@@ -33,7 +33,8 @@ enum Edge: String, CaseIterable, Codable {
     var title: String { rawValue.capitalized + " Edge" }
 }
 
-/// What an edge does. `slide`: "volume" | "brightness" | "keyboard" (continuous) | "actions" (forward/backward) | "none".
+/// What an edge does. `slide`: "volume" | "brightness" | "keyboard" (levels) | "scroll" | "appSwitcher" |
+/// "actions" (forward/backward) | "none".
 /// Forward = slide up (left/right edges) or right (top/bottom edges).
 struct EdgeBinding: Codable, Equatable {
     var slide = "none"
@@ -54,8 +55,11 @@ struct EdgeBinding: Codable, Equatable {
     /// Any tap-like gesture set (tap, double-tap, hold): clicks are captured from touch-down.
     var touches: Bool { !tap.isNone || !doubleTap.isNone || !hold.isNone }
 
+    /// A level control (volume, brightness, keyboard light) driven by the slider.
     var continuous: Bool { slide == "volume" || slide == "brightness" || slide == "keyboard" }
-    var slides: Bool { continuous || (slide == "actions" && !(forward.isNone && backward.isNone)) }
+    var isScroll: Bool { slide == "scroll" }
+    var isSwitcher: Bool { slide == "appSwitcher" }
+    var slides: Bool { continuous || isScroll || isSwitcher || (slide == "actions" && !(forward.isNone && backward.isNone)) }
     var isNone: Bool { !slides && !touches }
 
     init(from decoder: Decoder) throws {

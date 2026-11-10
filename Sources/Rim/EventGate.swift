@@ -264,6 +264,10 @@ final class EventGate {
         lock.lock()
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .scrollWheel:
+            // Rim's own edge-scroll events always pass.
+            if type == .scrollWheel && event.getIntegerValueField(.eventSourceUnixProcessID) == Int64(getpid()) {
+                lock.unlock(); return pass
+            }
             let drop = captureAll && sessionAliveLocked(t)
             let pin = pinnedCursor
             if drop && type != .scrollWheel {

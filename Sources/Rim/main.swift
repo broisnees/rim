@@ -353,6 +353,71 @@ if CommandLine.arguments.contains("--gesture-test") {
     check(!stroke((0.96, 0.30), (0.96, 0.55), duration: 0.09, settle: 1.0).contains("edgeMomentum:nextTab"), "momentum can be switched off")
     GestureEngine.testConfig = cfg
 
+    // ---- Edge scrolling (events captured, never posted) ----
+    var scrolled: [(Int32, Int32)] = []
+    ScrollOutput.testSink = { dx, dy in scrolled.append((dx, dy)) }
+    var sc = cfg
+    sc.edges.right = EdgeBinding(slide: "scroll")
+    sc.edges.bottom = EdgeBinding(slide: "scroll")
+    GestureEngine.testConfig = sc
+    scrolled = []
+    _ = stroke((0.96, 0.30), (0.96, 0.60), duration: 0.8, settle: 0.05)
+    let dy = scrolled.reduce(0) { $0 + Int($1.1) }
+    check(!scrolled.isEmpty && scrolled.allSatisfy { $0.0 == 0 }, "right edge scrolls vertically only (\(scrolled.count) events)")
+    check(ScrollOutput.natural ? dy < 0 : dy > 0, "finger up scrolls the content up with natural scrolling (\(dy) px)")
+    let slowOnly = scrolled.count
+    scrolled = []
+    _ = stroke((0.5, 0.05), (0.75, 0.05), duration: 0.5, settle: 0.05)
+    check(!scrolled.isEmpty && scrolled.allSatisfy { $0.1 == 0 }, "bottom edge scrolls horizontally")
+    scrolled = []
+    _ = stroke((0.96, 0.30), (0.96, 0.50), duration: 0.06, settle: 1.5)
+    let scrollGlide = scrolled.count
+    check(scrollGlide > slowOnly / 4 && scrollGlide > 10, "a scroll flick keeps gliding with momentum (\(scrollGlide) events)")
+    // Sub-pixel accumulation: 100 tiny moves of 0.05 mm (0.35 px each) must still scroll ~35 px.
+    ScrollOutput.reset(); scrolled = []
+    for _ in 0..<100 { ScrollOutput.scroll(alongMM: 0.05, vertical: true, gain: 1) }
+    let tiny = abs(scrolled.reduce(0) { $0 + Int($1.1) })
+    check(tiny >= 34 && tiny <= 35, "slow movement isn't lost: 100 × 0.35 px → \(tiny) px")
+    ScrollOutput.testSink = nil
+
+    // ---- App switcher (keys captured, never posted): Cmd is always released ----
+    var keys: [String] = []
+    SwitcherHold.testSink = { keys.append($0) }
+    var sw = cfg
+    sw.edges.right = EdgeBinding(slide: "appSwitcher", stepMM: 10)
+    GestureEngine.testConfig = sw
+    keys = []
+    _ = stroke((0.96, 0.75), (0.96, 0.30), duration: 0.6)
+    check(keys.first == "cmdDown" && keys.last == "cmdUp" && keys.filter { $0 == "tab" }.count >= 2,
+          "slide down: Cmd held, next apps selected, Cmd released on lift → \(keys)")
+    keys = []
+    _ = stroke((0.96, 0.30), (0.96, 0.75), duration: 0.6)
+    check(keys.contains("shiftTab") && keys.last == "cmdUp", "slide up goes to previous apps")
+    keys = []
+    _ = stroke((0.96, 0.75), (0.96, 0.40), duration: 0.4) { engine, t in }
+    let afterLift = keys.last
+    keys = []
+    let e2 = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+    var tt = 300.0
+    for i in 0...40 {
+        let y = 0.75 - Double(i) * 0.008
+        e2.process([Contact(id: 5, x: 0.96, y: Float(y), state: 4, size: 0.9, xmm: 0.96 * 124.8, ymm: y * 76.8)], time: tt); tt += 1.0 / 120
+    }
+    e2.process([Contact(id: 5, x: 0.96, y: 0.42, state: 4, size: 0.9, xmm: 119.8, ymm: 32.2),
+                Contact(id: 6, x: 0.5, y: 0.5, state: 4, size: 0.9, xmm: 62.4, ymm: 38.4)], time: tt)
+    check(afterLift == "cmdUp" && keys.last == "cmdUp" && !SwitcherHold.holding, "Cmd released when a second finger lands (cancel)")
+    keys = []
+    for i in 0...40 {
+        let y = 0.75 - Double(i) * 0.008
+        e2.process([], time: tt); tt += 0.05
+        e2.process([Contact(id: 7, x: 0.96, y: Float(y), state: 4, size: 0.9, xmm: 0.96 * 124.8, ymm: y * 76.8)], time: tt); tt += 1.0 / 120
+        if i == 0 { keys = [] }
+    }
+    e2.physicalPress()
+    check(!SwitcherHold.holding, "Cmd released on a physical click")
+    SwitcherHold.testSink = nil
+    GestureEngine.testConfig = cfg
+
     // Real-hand swipes (measured): 8–21 mm at 70–200 mm/s must all fire with a 19 mm step.
     var real = cfg
     real.edges.bottom.stepMM = 18.9
