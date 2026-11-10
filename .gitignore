@@ -1,0 +1,18 @@
+# Build output
+.build/
+build/
+*.dmg
+*.dmg.sha256
+
+# Local signing settings (copy signing.env.example → signing.env)
+signing.env
+
+# Generated logo previews (regenerate from the SVGs)
+logos/**/*.png
+
+# Editors / OS / tools
+.DS_Store
+.swiftpm/
+*.xcodeproj/
+.vscode/
+.claude/
