@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
                                                       reason: "Rim filters trackpad input in real time")
+        PointerFreeze.prepare()
         ConfigStore.shared.load()
         Learner.shared.load()
         AppContext.shared.start()
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         SwitcherHold.release()
+        PointerFreeze.unfreeze()
         EventGate.shared.stop()
         Learner.shared.saveIfNeeded()
     }
