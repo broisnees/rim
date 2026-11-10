@@ -5,7 +5,21 @@ import ApplicationServices
 /// Resolution order: user override → known-app table → the app's own menu item (Accessibility) → common default.
 enum SmartActions {
     static let types: Set<String> = ["toggleSidebar", "closeTab", "newTab", "reopenTab", "nextTab", "previousTab",
-                                     "back", "forward", "hideApp"]
+                                     "back", "forward", "hideApp",
+                                     "seekForward", "seekBackward", "playbackFaster", "playbackSlower",
+                                     "frameForward", "frameBackward", "videoFullscreen"]
+
+    /// Video and audio players: per-app keys, with the web-player conventions (YouTube, Netflix, Vimeo…) as default.
+    private static let mediaKeys: [String: [String: String]] = [
+        "seekForward": ["org.videolan.vlc": "cmd+alt+right", "com.spotify.client": "shift+right"],
+        "seekBackward": ["org.videolan.vlc": "cmd+alt+left", "com.spotify.client": "shift+left"],
+        "playbackFaster": ["com.colliderli.iina": "]", "org.videolan.vlc": "cmd+="],
+        "playbackSlower": ["com.colliderli.iina": "[", "org.videolan.vlc": "cmd+-"],
+        "frameForward": ["com.apple.QuickTimePlayerX": "right", "org.videolan.vlc": "e"],
+        "frameBackward": ["com.apple.QuickTimePlayerX": "left"],
+        "videoFullscreen": ["com.apple.QuickTimePlayerX": "ctrl+cmd+f", "org.videolan.vlc": "cmd+f",
+                            "com.colliderli.iina": "cmd+f", "com.apple.TV": "ctrl+cmd+f"],
+    ]
 
     /// Default keys that work in nearly every app and browser.
     private static let defaults: [String: String] = [
@@ -13,6 +27,11 @@ enum SmartActions {
         "nextTab": "ctrl+tab", "previousTab": "ctrl+shift+tab",
         "back": "cmd+[", "forward": "cmd+]", "hideApp": "cmd+h",
         "toggleSidebar": "ctrl+cmd+s",   // AppKit's standard Show/Hide Sidebar
+        // Web video players (YouTube, Netflix, Vimeo, Prime…), IINA and most players:
+        "seekForward": "right", "seekBackward": "left",
+        "playbackFaster": "shift+.", "playbackSlower": "shift+,",
+        "frameForward": ".", "frameBackward": ",",
+        "videoFullscreen": "f",
     ]
 
     /// Apps whose sidebar has no standard menu item (or a different shortcut).
@@ -52,6 +71,7 @@ enum SmartActions {
                 debugLog("smart \(type): override \(combo)")
                 postKeys(combo); return
             }
+            if let combo = mediaKeys[type]?[bundle] { debugLog("smart \(type): player \(combo)"); postKeys(combo); return }
             if type == "toggleSidebar" {
                 if let combo = sidebarKeys[bundle] { debugLog("smart sidebar: table \(combo)"); postKeys(combo); return }
                 if pid > 0, pressMenuItem(pid: pid, type: type) { return }
