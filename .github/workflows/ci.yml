@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          swift --version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Sources/**') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Motion math tests
+        run: |
+          swiftc -O Sources/Rim/Motion.swift scripts/motion-tests/main.swift -o .build/motion-tests
+          .build/motion-tests
+
+      - name: Gesture engine tests
+        run: .build/release/Rim --gesture-test
+
+      - name: Input-safety tests
+        run: .build/release/Rim --gate-test
+
+      - name: Performance budget
+        run: .build/release/Rim --bench
+
+      - name: App bundle (ad-hoc signed)
+        run: ./build.sh
+
+      - name: Upload Rim.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rim-${{ github.sha }}
+          path: build/Rim.app
+          retention-days: 7
