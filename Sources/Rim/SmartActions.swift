@@ -62,6 +62,38 @@ enum SmartActions {
         }
     }
 
+    // MARK: - Video context
+
+    static let videoTypes: Set<String> = ["seekForward", "seekBackward", "playbackFaster", "playbackSlower",
+                                          "frameForward", "frameBackward", "videoFullscreen"]
+
+    static let browsers: Set<String> = [
+        "com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser", "company.thebrowser.dia",
+        "org.mozilla.firefox", "com.microsoft.edgemac", "com.brave.Browser", "app.zen-browser.zen",
+        "com.operasoftware.Opera", "com.kagi.kagimacOS", "com.vivaldi.Vivaldi",
+    ]
+
+    /// Page titles of video sites (browsers put the page title in the window title, e.g. "Talk - YouTube").
+    private static let videoSites = ["youtube", "netflix", "vimeo", "twitch", "prime video", "disney+", "hulu",
+                                     "dailymotion", "crunchyroll", "apple tv", "bilibili", "peacock", "paramount+",
+                                     "plex", "jellyfin", "loom", "coursera", "udemy", "nebula", "rumble", "kick"]
+
+    /// Video keys are arrow / letter keys: on an ordinary web page they would scroll sideways or type.
+    /// In browsers they're only sent when the front tab is a video site; players always get them.
+    static func isVideoContext(bundle: String, windowTitle: String?) -> Bool {
+        guard browsers.contains(bundle) else { return true }
+        guard let t = windowTitle?.lowercased(), !t.isEmpty else { return false }
+        return videoSites.contains { t.contains($0) }
+    }
+
+    private static func frontWindowTitle(pid: pid_t) -> String? {
+        guard pid > 0 else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        guard let win: AXUIElement = attribute(app, kAXFocusedWindowAttribute) else { return nil }
+        return attribute(win, kAXTitleAttribute)
+    }
+
     /// The keys a smart action sends in an app, without the menu-bar search (tests, diagnostics).
     static func resolvedKeys(_ type: String, bundle: String) -> String? {
         if let combo = ConfigStore.shared.current.smartKeys[bundle]?[type], !combo.isEmpty { return combo }
@@ -75,6 +107,11 @@ enum SmartActions {
         let bundle = ctx.bundleID ?? ""
         let pid = ctx.pid
         DispatchQueue.global(qos: .userInitiated).async {
+            if videoTypes.contains(type) && !isVideoContext(bundle: bundle, windowTitle: frontWindowTitle(pid: pid)) {
+                debugLog("smart \(type): no video in the front tab, keys not sent")
+                HUD.shared.message("play.slash", "No video in this tab")
+                return
+            }
             if let combo = ConfigStore.shared.current.smartKeys[bundle]?[type], !combo.isEmpty {
                 debugLog("smart \(type): override \(combo)")
                 postKeys(combo); return
