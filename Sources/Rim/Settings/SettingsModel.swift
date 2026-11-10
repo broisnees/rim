@@ -260,6 +260,30 @@ final class SettingsModel: ObservableObject {
         "com.apple.iMovieApp": "iMovie", "com.blackmagic-design.DaVinciResolve": "DaVinci Resolve",
     ]
 
+    /// Browsers and video players: where the bottom edge should scrub video instead of skipping tracks.
+    static let videoApps: [String: String] = [
+        "com.apple.Safari": "Safari", "com.google.Chrome": "Google Chrome", "company.thebrowser.Browser": "Arc",
+        "company.thebrowser.dia": "Dia", "org.mozilla.firefox": "Firefox", "com.microsoft.edgemac": "Microsoft Edge",
+        "com.brave.Browser": "Brave", "app.zen-browser.zen": "Zen", "com.operasoftware.Opera": "Opera",
+        "com.kagi.kagimacOS": "Orion", "com.colliderli.iina": "IINA", "org.videolan.vlc": "VLC",
+        "com.apple.QuickTimePlayerX": "QuickTime Player", "com.apple.TV": "TV",
+    ]
+
+    static let videoScrubber = EdgeBinding(slide: "actions", forward: Action("seekForward"), backward: Action("seekBackward"),
+                                           repeats: true, stepMM: 8, tap: Action("playPause"), doubleTap: Action("videoFullscreen"))
+
+    /// Bottom edge = Video Scrubber in every installed browser / player (other apps keep their bottom edge).
+    @discardableResult
+    func addVideoScrubber(edge: Edge = .bottom) -> Int {
+        var n = 0
+        for (id, name) in Self.videoApps where NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil {
+            if config.apps[id] == nil { config.apps[id] = Config.AppRule(name: name) }
+            config.apps[id]?.edgeOverrides[edge.rawValue] = Self.videoScrubber
+            n += 1
+        }
+        return n
+    }
+
     /// Adds every installed drawing / design / game app with Rim turned off. Returns how many were added.
     @discardableResult
     func addCreativePresets() -> Int {
