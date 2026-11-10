@@ -228,13 +228,35 @@ func postKeys(_ combo: String) -> Bool {
         }
     }
     guard let key else { return false }
-    let src = CGEventSource(stateID: .hidSystemState)
-    for down in [true, false] {
-        let e = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(key), keyDown: down)
-        e?.flags = flags
-        e?.post(tap: .cghidEventTap)
+    // Press and release modifiers like a real keyboard: mod down → key down/up → mod up.
+    // Sending only flags on the key event leaves apps that track modifiers from events (e.g. Mac Mouse Fix,
+    // where Shift = scroll horizontally) believing the modifier is still held.
+    let modifiers: [(CGEventFlags, Int)] = [(.maskControl, kVK_Control), (.maskAlternate, kVK_Option),
+                                            (.maskShift, kVK_Shift), (.maskCommand, kVK_Command)]
+    let used = modifiers.filter { flags.contains($0.0) }
+    let base = CGEventSource.flagsState(.hidSystemState).intersection([.maskShift, .maskControl, .maskAlternate, .maskCommand])
+    var current = base
+    for (flag, code) in used {
+        current.insert(flag)
+        postKeyEvent(code, down: true, flags: current)
+    }
+    postKeyEvent(key, down: true, flags: current.union(flags))
+    postKeyEvent(key, down: false, flags: current.union(flags))
+    for (flag, code) in used.reversed() {
+        if !base.contains(flag) { current.remove(flag) }
+        postKeyEvent(code, down: false, flags: current)
     }
     return true
+}
+
+/// Test hook: receives "down:<keycode>:<flags>" / "up:…" instead of posting real key events.
+var keyEventSink: ((String) -> Void)?
+
+private func postKeyEvent(_ code: Int, down: Bool, flags: CGEventFlags) {
+    if let sink = keyEventSink { sink("\(down ? "down" : "up"):\(code):\(flags.rawValue & 0x1E0000)"); return }
+    let e = CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState), virtualKey: CGKeyCode(code), keyDown: down)
+    e?.flags = flags
+    e?.post(tap: .cghidEventTap)
 }
 
 let keyCodes: [String: Int] = [

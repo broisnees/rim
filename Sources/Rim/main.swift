@@ -449,6 +449,21 @@ if CommandLine.arguments.contains("--gesture-test") {
           "seek keys match each player (browsers ←/→, VLC ⌘⌥←/→, QuickTime full screen ⌃⌘F)")
     GestureEngine.testConfig = cfg
 
+    // Shortcuts press and release their modifiers like a real keyboard, ending with nothing held.
+    var keyLog: [String] = []
+    keyEventSink = { keyLog.append($0) }
+    _ = postKeys("cmd+shift+5")
+    let shiftCode = 56, cmdCode = 55, fiveCode = 23
+    check(keyLog.first == "down:\(shiftCode):\(CGEventFlags.maskShift.rawValue)"
+          && keyLog.contains("down:\(fiveCode):\((CGEventFlags.maskShift.union(.maskCommand)).rawValue)")
+          && keyLog.last == "up:\(shiftCode):0" && keyLog.contains("up:\(cmdCode):\(CGEventFlags.maskShift.rawValue)")
+          && keyLog.count == 6,
+          "⌘⇧5 is sent as ⇧↓ ⌘↓ 5↓ 5↑ ⌘↑ ⇧↑ and ends with no modifier held → \(keyLog)")
+    keyLog = []
+    _ = postKeys("right")
+    check(keyLog == ["down:124:0", "up:124:0"], "plain keys carry no modifiers")
+    keyEventSink = nil
+
     // Video keys only reach browser tabs that are video sites (arrow keys would scroll other pages sideways).
     check(SmartActions.isVideoContext(bundle: "com.google.Chrome", windowTitle: "Big Buck Bunny - YouTube")
           && SmartActions.isVideoContext(bundle: "com.apple.Safari", windowTitle: "Netflix")
