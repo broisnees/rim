@@ -130,8 +130,17 @@ struct Config: Codable, Equatable {
         var tipTapLeft = Action.none
         var tipTapRight = Action.none
         var twoHandTap = Action("missionControl")
+        var tipSwipeLeft = Action.none
+        var tipSwipeRight = Action.none
+        var tipSwipeUp = Action.none
+        var tipSwipeDown = Action.none
+        var tipSwipeStepMM = 10.0
+        var twoFingerSwipeLeft = Action.none
+        var twoFingerSwipeRight = Action.none
 
-        static let names = ["threeFingerTap", "fourFingerTap", "fiveFingerTap", "tipTapLeft", "tipTapRight", "twoHandTap"]
+        static let names = ["threeFingerTap", "fourFingerTap", "fiveFingerTap", "tipTapLeft", "tipTapRight", "twoHandTap",
+                            "tipSwipeLeft", "tipSwipeRight", "tipSwipeUp", "tipSwipeDown",
+                            "twoFingerSwipeLeft", "twoFingerSwipeRight"]
 
         func action(_ name: String) -> Action {
             switch name {
@@ -141,6 +150,12 @@ struct Config: Codable, Equatable {
             case "tipTapLeft": return tipTapLeft
             case "tipTapRight": return tipTapRight
             case "twoHandTap": return twoHandTap
+            case "tipSwipeLeft": return tipSwipeLeft
+            case "tipSwipeRight": return tipSwipeRight
+            case "tipSwipeUp": return tipSwipeUp
+            case "tipSwipeDown": return tipSwipeDown
+            case "twoFingerSwipeLeft": return twoFingerSwipeLeft
+            case "twoFingerSwipeRight": return twoFingerSwipeRight
             default: return .none
             }
         }
@@ -153,6 +168,12 @@ struct Config: Codable, Equatable {
             case "tipTapLeft": tipTapLeft = a
             case "tipTapRight": tipTapRight = a
             case "twoHandTap": twoHandTap = a
+            case "tipSwipeLeft": tipSwipeLeft = a
+            case "tipSwipeRight": tipSwipeRight = a
+            case "tipSwipeUp": tipSwipeUp = a
+            case "tipSwipeDown": tipSwipeDown = a
+            case "twoFingerSwipeLeft": twoFingerSwipeLeft = a
+            case "twoFingerSwipeRight": twoFingerSwipeRight = a
             default: break
             }
         }
