@@ -301,7 +301,7 @@ final class GestureEngine {
             // Detected, but the action needs a value (an app, keys, …): say so instead of doing nothing.
             debugLog("incomplete action \(action.type) on \(where_) \(how)")
             Haptics.play(.tick)
-            HUD.shared.message("exclamationmark.circle", "Finish setting up \(where_.isEmpty ? "this gesture" : where_)")
+            KeyCast.shared.message("exclamationmark.circle", "Finish setting up \(where_.isEmpty ? "this gesture" : where_)")
             announce(gesture, zone: zone, text: "\(how) → not set up yet")
             return
         }

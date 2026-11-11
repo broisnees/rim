@@ -109,7 +109,7 @@ enum SmartActions {
         DispatchQueue.global(qos: .userInitiated).async {
             if videoTypes.contains(type) && !isVideoContext(bundle: bundle, windowTitle: frontWindowTitle(pid: pid)) {
                 debugLog("smart \(type): no video in the front tab, keys not sent")
-                HUD.shared.message("play.slash", "No video in this tab")
+                KeyCast.shared.message("play.slash", "No video in this tab")
                 return
             }
             if let combo = ConfigStore.shared.current.smartKeys[bundle]?[type], !combo.isEmpty {

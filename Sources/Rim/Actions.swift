@@ -50,8 +50,18 @@ enum Actions {
         default: NSLog("Rim: unknown action type '\(a.type)'")
         }
         if ConfigStore.shared.current.hud, let (symbol, text) = hudInfo(a) {
-            HUD.shared.message(symbol, text)
+            KeyCast.shared.show(keys: shortcut(for: a), symbol: symbol, title: text)
         }
+    }
+
+    /// The keyboard shortcut an action sends in the front app, if it is one (shown as ⌘C etc.).
+    static func shortcut(for a: Action) -> String? {
+        if a.type == "keys" { return a.value }
+        if let k = keyActions[a.type] { return k }
+        if SmartActions.types.contains(a.type) {
+            return SmartActions.resolvedKeys(a.type, bundle: AppContext.shared.bundleID ?? "")
+        }
+        return nil
     }
 
     /// Every action shows what ran, except ones whose result is already obvious on screen.

@@ -594,6 +594,17 @@ if CommandLine.arguments.contains("--gesture-test") {
     exit(fails == 0 ? 0 : 1)
 }
 
+if CommandLine.arguments.contains("--keycast-demo") {
+    // Visual check of the action pills.
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    KeyCast.shared.show(keys: "cmd+c", symbol: "doc.on.doc", title: "Copy")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { KeyCast.shared.show(keys: "cmd+[", symbol: "chevron.backward", title: "Back") }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { KeyCast.shared.show(keys: nil, symbol: "forward.fill", title: "Next Track") }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exit(0) }
+    app.run()
+}
+
 if CommandLine.arguments.contains("--freeze-demo") {
     // Visual check: freezes the pointer for 2 s (stand-in cursor drawn, real cursor hidden), then restores it.
     let app = NSApplication.shared
