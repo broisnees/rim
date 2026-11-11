@@ -417,6 +417,22 @@ if CommandLine.arguments.contains("--gesture-test") {
     check(drumBig.isEmpty && drumTip.count <= 1,
           "a hand drumming on the bottom edge: thumb-sized never fires; fingertip-sized at most its very first pair")
     check(taps(2, at: (0.5, 0.04)) == ["edgeDoubleTap:mute"], "an isolated deliberate double-tap still works")
+    // Measured: double-tapping again ~0.55 s after a double-tap ran (was: "not isolated", every retry blocked).
+    do {
+        fired = []
+        let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 900.0
+        for pair in 0..<3 {
+            for _ in 0..<2 {
+                for _ in 0..<10 { engine.process([Contact(id: 30, x: 0.49, y: 0.03, state: 4, size: 1.2, xmm: 0.49 * 124.8, ymm: 0.03 * 76.8)], time: t); t += 1.0 / 120 }
+                engine.process([], time: t); t += 0.08
+                Thread.sleep(forTimeInterval: 0.08)
+            }
+            if pair < 2 { t += 0.5; Thread.sleep(forTimeInterval: 0.5) }
+        }
+        Thread.sleep(forTimeInterval: 0.4)
+        check(fired == Array(repeating: "edgeDoubleTap:mute", count: 3), "double-tapping again right after a double-tap works, every time → \(fired)")
+    }
     check(stroke((0.5, 0.04), (0.5, 0.04), duration: 0.1, hold: 0.6) == ["edgeHold:hideApp"], "bottom edge: press & hold")
     check(stroke((0.5, 0.04), (0.75, 0.04), duration: 0.25) == ["edgeSwipe:nextTrack"], "bottom edge: swipe still works with tap gestures set")
     GestureEngine.testConfig = cfg
