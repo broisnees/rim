@@ -180,6 +180,8 @@ struct Config: Codable, Equatable {
     }
     /// Force Touch feedback: three strength levels (actuator ids) and a pattern per event.
     struct HapticSettings: Codable, Equatable {
+        /// "apple": macOS's own system haptics with Apple's rules (default). "custom": the patterns below.
+        var style = "apple"
         var light: Int32 = 3
         var medium: Int32 = 4
         var strong: Int32 = 6
@@ -337,6 +339,9 @@ final class ConfigStore {
         if let data = try? enc.encode(cfg) { try? data.write(to: url, options: .atomic) }
         mtime = modDate()
     }
+
+    /// Tests: swap the in-memory config without touching the file on disk.
+    func setForTesting(_ cfg: Config) { lock.lock(); _current = cfg; lock.unlock() }
 
     func update(_ change: (inout Config) -> Void) {
         var c = current
