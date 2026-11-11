@@ -497,16 +497,36 @@ if CommandLine.arguments.contains("--gesture-test") {
         e4.process([], time: t)
         let palmSlide = sliders.count
         sliders = []
-        _ = stroke((0.001, 0.30), (0.001, 0.45), duration: 0.15)                    // measured: hand side on the border
+        _ = stroke((0.001, 0.30), (0.001, 0.45), duration: 0.7)                     // hand side drifting on the border
+        _ = stroke((0.001, 0.30), (0.001, 0.40), duration: 0.12)                    // 7.7 mm nudge of the hand side
         let border = sliders.count
         sliders = []
         _ = stroke((0.0, 0.30), (0.0, 0.55), duration: 0.3)                         // measured: fingertip slid over the border
         _ = stroke((0.001, 0.30), (0.001, 0.42), duration: 0.15, size: 1.1)         // full fingertip on the border
+        _ = stroke((0.001, 0.30), (0.001, 0.47), duration: 0.2, size: 0.4)          // measured: finger half off the border, quick
         let borderSlides = sliders.count
         sliders = []
         _ = stroke((0.03, 0.30), (0.03, 0.60), duration: 0.3)                       // fingertip, ~75 mm/s
-        check(drift == 0 && palmSlide == 0 && border == 0 && borderSlides == 2 && sliders == ["slider:brightness"],
+        check(drift == 0 && palmSlide == 0 && border == 0 && borderSlides == 3 && sliders == ["slider:brightness"],
               "palm drift, palm-sized slides and a hand side on the border don't touch brightness; fingertip slides do, on the border too (\(drift)/\(palmSlide)/\(border)/\(borderSlides)/\(sliders.count))")
+        // A thumb resting far away (bottom middle) doesn't stop a slide; a finger right next to it does.
+        func slideWith(_ other: (Double, Double)) -> Int {
+            sliders = []
+            let e = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+            var t = 950.0
+            let rest = { Contact(id: 61, x: Float(other.0), y: Float(other.1), state: 4, size: 1.0, xmm: other.0 * 124.8, ymm: other.1 * 76.8) }
+            for _ in 0..<60 { e.process([rest()], time: t); t += 1.0 / 120 }
+            for i in 0...36 {
+                let y = 0.30 + Double(i) * 0.008
+                e.process([rest(), Contact(id: 62, x: 0.03, y: Float(y), state: 4, size: 0.9, xmm: 3.7, ymm: y * 76.8)], time: t); t += 1.0 / 120
+            }
+            e.process([rest()], time: t); t += 0.1
+            e.process([], time: t)
+            return sliders.count
+        }
+        let withThumb = slideWith((0.5, 0.06)), withMid = slideWith((0.6, 0.4)), withNeighbour = slideWith((0.15, 0.35))
+        check(withThumb == 1 && withMid == 1 && withNeighbour == 0,
+              "a thumb resting far away doesn't block an edge slide; a finger right beside it does (\(withThumb)/\(withMid)/\(withNeighbour))")
         SliderController.testSink = nil
         palm.edges.left = EdgeBinding()
         GestureEngine.testConfig = cfg
