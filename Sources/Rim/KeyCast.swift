@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// On-screen feedback: small black pills in the bottom-left corner.
+/// On-screen feedback: small black pills centred at the bottom of the screen; they pop in and fade out.
 /// - Action pills: icon + name; up to three stack and fade after a moment.
 /// - Level pill (volume, brightness, keyboard light): icon, slim bar and percentage, updated live while sliding,
 ///   with rubber-band stretch past the ends; it fades shortly after the finger lifts.
@@ -33,6 +33,9 @@ final class KeyCast: ObservableObject {
     private static let lifetime = 1.5
     private static let maxEntries = 3
     static let barWidth: CGFloat = 110
+    /// Pop in: springs up from smaller with a slight overshoot. Fade out: quick, soft, a touch smaller.
+    static let pop = Animation.spring(response: 0.34, dampingFraction: 0.62)
+    static let fade = Animation.easeIn(duration: 0.22)
 
     // MARK: Actions
 
@@ -44,12 +47,12 @@ final class KeyCast: ObservableObject {
         let entry = Entry(symbol: symbol, title: title, warning: warning)
         DispatchQueue.main.async {
             self.place()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(Self.pop) {
                 self.entries.append(entry)
                 if self.entries.count > Self.maxEntries { self.entries.removeFirst(self.entries.count - Self.maxEntries) }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.lifetime) {
-                withAnimation(.easeOut(duration: 0.25)) { self.entries.removeAll { $0.id == entry.id } }
+                withAnimation(Self.fade) { self.entries.removeAll { $0.id == entry.id } }
             }
         }
     }
@@ -69,7 +72,7 @@ final class KeyCast: ObservableObject {
             self.hideLevel?.cancel()
             self.place()
             if self.level == nil {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { self.level = l }
+                withAnimation(Self.pop) { self.level = l }
             } else {
                 withAnimation(.interactiveSpring(response: 0.12, dampingFraction: 1)) { self.level = l }
             }
@@ -81,7 +84,7 @@ final class KeyCast: ObservableObject {
         DispatchQueue.main.async {
             guard self.level != nil else { return }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.6)) { self.level?.stretch = 0 }
-            let work = DispatchWorkItem { withAnimation(.easeOut(duration: 0.25)) { self.level = nil } }
+            let work = DispatchWorkItem { withAnimation(Self.fade) { self.level = nil } }
             self.hideLevel = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1, execute: work)
         }
@@ -94,7 +97,7 @@ final class KeyCast: ObservableObject {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         if let vf = screen?.visibleFrame {
-            p.setFrameOrigin(NSPoint(x: vf.minX + 20, y: vf.minY + 20))
+            p.setFrameOrigin(NSPoint(x: (vf.midX - Self.size.width / 2).rounded(), y: vf.minY + 56))
         }
         p.orderFrontRegardless()
     }
@@ -122,19 +125,22 @@ private struct FeedbackStack: View {
     @ObservedObject var model: KeyCast
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .center, spacing: 6) {
             Spacer(minLength: 0)
             ForEach(model.entries) { e in
-                Pill { ActionPill(entry: e) }
-                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                Pill { ActionPill(entry: e) }.transition(Self.popTransition)
             }
             if let level = model.level {
-                Pill { LevelPill(level: level) }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                Pill { LevelPill(level: level) }.transition(Self.popTransition)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
+
+    /// Pops in from 60 % scale (anchored at its bottom) with a fade; leaves at 90 % while fading out.
+    static let popTransition = AnyTransition.asymmetric(
+        insertion: .scale(scale: 0.6, anchor: .bottom).combined(with: .opacity),
+        removal: .scale(scale: 0.9, anchor: .center).combined(with: .opacity))
 }
 
 /// Shared pill chrome: small, black, rounded, hairline border.
