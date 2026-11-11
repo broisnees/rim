@@ -598,9 +598,9 @@ if CommandLine.arguments.contains("--keycast-demo") {
     // Visual check of the action pills.
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
-    KeyCast.shared.show(keys: "cmd+c", symbol: "doc.on.doc", title: "Copy")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { KeyCast.shared.show(keys: "cmd+[", symbol: "chevron.backward", title: "Back") }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { KeyCast.shared.show(keys: nil, symbol: "forward.fill", title: "Next Track") }
+    KeyCast.shared.show(symbol: "doc.on.doc", title: "Copy")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { KeyCast.shared.show(symbol: "chevron.backward", title: "Back") }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { KeyCast.shared.level(.volume, value: 0.62, overshoot: 0) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exit(0) }
     app.run()
 }
