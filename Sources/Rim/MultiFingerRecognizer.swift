@@ -21,9 +21,14 @@ struct MultiFingerRecognizer {
         var restBefore = 0.2          // s the resting finger must be down before a tip-tap
         var tipTapMax = 0.25          // s the tip-tapping finger may stay down
         var restMove = 3.0            // mm the resting finger may move during a tip-tap
-        var tipTapMinDistance = 10.0  // mm: closer than this is the same finger rolling
-        var tipTapMaxDistance = 30.0  // mm: a neighbouring finger (adjacent fingertips sit ~15–22 mm apart)
-        var tipTapMaxVertical = 18.0  // mm: the tap lands beside the resting finger, not above or below it
+        // Measured on a real hand: neighbouring-finger taps land 17–31 mm away and up to 22 mm above / below
+        // (the hand sits at an angle). Limits leave a margin around that.
+        var tipTapMinDistance = 12.0  // mm: closer than this is the same finger rolling
+        var tipTapMaxDistance = 40.0  // mm: further than this is another hand or a stray touch
+        var tipTapMaxVertical = 28.0  // mm above / below the resting finger
+        var tipTapMinSideways = 5.0   // mm: left vs right must be clear
+        var border = 0.04             // fraction of the trackpad: touches landing this close to the frame are
+                                      // the sides of the hands brushing it, never deliberate multi-finger taps
     }
 
     private struct Finger {
@@ -84,6 +89,10 @@ struct MultiFingerRecognizer {
                 lastLanding = time
             }
             if c.size > palmSize { invalid = true }
+            let b = Float(limits.border)
+            if fingers[c.id]?.t0 == time, c.x < b || c.x > 1 - b || c.y < b || c.y > 1 - b {
+                invalid = true    // landed on the frame: hands brushing the trackpad's sides
+            }
         }
         maxConcurrent = max(maxConcurrent, fingers.count)
         return events
@@ -100,7 +109,7 @@ struct MultiFingerRecognizer {
         let dx = f.x0 - anchor.x, dy = f.y0 - anchor.y
         let distance = hypot(dx, dy)
         guard distance >= limits.tipTapMinDistance, distance <= limits.tipTapMaxDistance,
-              abs(dy) <= limits.tipTapMaxVertical else { return nil }
+              abs(dy) <= limits.tipTapMaxVertical, abs(dx) >= limits.tipTapMinSideways else { return nil }
         return dx < 0 ? .tipTapLeft : .tipTapRight
     }
 
