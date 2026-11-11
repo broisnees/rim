@@ -21,6 +21,9 @@ struct MultiFingerRecognizer {
         var restBefore = 0.2          // s the resting finger must be down before a tip-tap
         var tipTapMax = 0.25          // s the tip-tapping finger may stay down
         var restMove = 3.0            // mm the resting finger may move during a tip-tap
+        var tipTapMinDistance = 10.0  // mm: closer than this is the same finger rolling
+        var tipTapMaxDistance = 30.0  // mm: a neighbouring finger (adjacent fingertips sit ~15–22 mm apart)
+        var tipTapMaxVertical = 18.0  // mm: the tap lands beside the resting finger, not above or below it
     }
 
     private struct Finger {
@@ -93,7 +96,12 @@ struct MultiFingerRecognizer {
         let restMoved = hypot(rest.x - anchor.x, rest.y - anchor.y)
         guard restedFor >= limits.restBefore, time - f.t0 <= limits.tipTapMax,
               f.maxMove <= limits.maxMove, restMoved <= limits.restMove, rest.maxMove <= limits.maxMove * 2 else { return nil }
-        return f.x0 < rest.x ? .tipTapLeft : .tipTapRight
+        // A tip-tap is a neighbouring finger: close to the resting one and roughly level with it.
+        let dx = f.x0 - anchor.x, dy = f.y0 - anchor.y
+        let distance = hypot(dx, dy)
+        guard distance >= limits.tipTapMinDistance, distance <= limits.tipTapMaxDistance,
+              abs(dy) <= limits.tipTapMaxVertical else { return nil }
+        return dx < 0 ? .tipTapLeft : .tipTapRight
     }
 
     private func sequenceEnded(at time: Double) -> Event? {

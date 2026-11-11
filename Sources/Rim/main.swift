@@ -274,6 +274,11 @@ if CommandLine.arguments.contains("--gesture-test") {
     check(simulate([F(id: 1, down: 0, up: 1.2, x: 30, y: 35, vx: 40), F(id: 2, down: 0.4, up: 0.52, x: 82, y: 38)]).isEmpty,
           "pointing finger moving + tap = normal click, not tip-tap")
     check(simulate([rest, F(id: 2, down: 0.4, up: 0.9, x: 82, y: 38)]).isEmpty, "second finger held 0.5 s is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 115, y: 38)]).isEmpty, "tap 55 mm away (another hand) is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 95, y: 36)]).isEmpty, "tap 35 mm away (not the neighbouring finger) is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 78, y: 37)]) == ["tipTapRight"], "neighbouring finger 18 mm away is a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 68, y: 36)]).isEmpty, "tap 8 mm away (same finger rolling) is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 75, y: 70)]).isEmpty, "tap far above the resting finger is not a tip-tap")
 
     // ---- Zone engine: edges, corners, hold (actions are recorded, never run) ----
     var fired: [String] = []
@@ -337,6 +342,52 @@ if CommandLine.arguments.contains("--gesture-test") {
     }
     check(taps(2, at: (0.5, 0.04)) == ["edgeDoubleTap:mute"], "bottom edge: double-tap = mute (no single tap)")
     check(taps(1, at: (0.5, 0.04)) == ["edgeTap:playPause"], "bottom edge: single tap still plays / pauses (after the double-tap window)")
+
+    // A resting thumb on the bottom edge that bounces must not count as taps (was: play/pause firing by itself).
+    func restThenBounce() -> [String] {
+        fired = []
+        let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 400.0
+        let p = (0.5, 0.04)
+        let c = { Contact(id: 11, x: Float(p.0), y: Float(p.1), state: 4, size: 0.9, xmm: p.0 * 124.8, ymm: p.1 * 76.8) }
+        for _ in 0..<96 { engine.process([c()], time: t); t += 1.0 / 120 }   // rests 0.8 s
+        for _ in 0..<2 {                                                        // then bounces twice
+            engine.process([], time: t); t += 0.03
+            for _ in 0..<8 { engine.process([c()], time: t); t += 1.0 / 120 }
+        }
+        engine.process([], time: t)
+        Thread.sleep(forTimeInterval: 0.5)
+        return fired
+    }
+    var noHold = c2
+    noHold.edges.bottom.hold = .none            // your setup: tap / double-tap only (a long rest IS a hold by definition)
+    GestureEngine.testConfig = noHold
+    let bounced = restThenBounce()
+    GestureEngine.testConfig = c2
+    check(bounced.isEmpty, "resting thumb bouncing on the bottom edge fires nothing → \(bounced)")
+
+    // Measured drumming: short touches every ~0.6 s, often in pairs 0.15 s apart, at one spot on the bottom edge.
+    func drumming(size: Float) -> [String] {
+        fired = []
+        let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 500.0
+        for beat in 0..<8 {
+            for touch in 0..<(beat % 2 == 0 ? 2 : 1) {
+                let x = 0.58 + Double(touch) * 0.003, y = 0.08
+                for _ in 0..<9 { engine.process([Contact(id: Int32(20 + beat * 2 + touch), x: Float(x), y: Float(y), state: 4, size: size,
+                                                         xmm: x * 124.8, ymm: y * 76.8)], time: t); t += 1.0 / 120 }
+                engine.process([], time: t); t += 0.08
+            }
+            t += 0.45
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+        return fired
+    }
+    let drumBig = drumming(size: 1.4), drumTip = drumming(size: 1.0)
+    print("   drumming fired: thumb \(drumBig) · fingertip \(drumTip)")
+    check(drumBig.isEmpty && drumTip.count <= 1,
+          "a hand drumming on the bottom edge: thumb-sized never fires; fingertip-sized at most its very first pair")
+    check(taps(2, at: (0.5, 0.04)) == ["edgeDoubleTap:mute"], "an isolated deliberate double-tap still works")
     check(stroke((0.5, 0.04), (0.5, 0.04), duration: 0.1, hold: 0.6) == ["edgeHold:hideApp"], "bottom edge: press & hold")
     check(stroke((0.5, 0.04), (0.75, 0.04), duration: 0.25) == ["edgeSwipe:nextTrack"], "bottom edge: swipe still works with tap gestures set")
     GestureEngine.testConfig = cfg

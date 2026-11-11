@@ -115,7 +115,7 @@ struct Config: Codable, Equatable {
         var adaptive = true
         var typingPause = 0.5            // s after a keystroke during which no zone gesture can start
         var palmSize: Float = 1.6        // contacts larger than this (MT size units) are palms / thumbs
-        var multiFingerCooldown = 0.25   // s after a multi-finger touch ends
+        var multiFingerCooldown = 0.4    // s after a multi-finger touch (a resting hand) ends
         var activationWindow = 0.6       // s after touch-down within which a slider must engage
         var minTap = 0.03                // s; shorter contacts are grazes
         var maxTap = 0.28                // s; longer contacts are rests, not taps
@@ -245,6 +245,7 @@ extension Config {
         if c.edges.height < 0.15 && !c.edgeHeightCustomized { c.edges.height = 0.15 }
         c.corners.width = max(c.corners.width, Self.minCornerWidth)
         c.corners.height = max(c.corners.height, Self.minCornerHeight)
+        c.guardrails.multiFingerCooldown = max(c.guardrails.multiFingerCooldown, 0.4)
         return c
     }
 

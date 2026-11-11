@@ -48,6 +48,19 @@ final class GestureEngine {
     private var prevCount = 0
     private var multiFingerEndedAt = -100.0
     private var lastFrameTime = 0.0
+
+    // Resting fingers: contacts that stayed down a while. A resting thumb or palm "bouncing" makes lifts and
+    // re-landings that look like taps, so taps near a recent rest are ignored for a moment.
+    private var contactStart: [Int32: (t: Double, x: Double, y: Double)] = [:]
+    private var recentRests: [(x: Double, y: Double, end: Double)] = []
+    private var recentTouches: [(x: Double, y: Double, end: Double)] = []
+    static let restDuration = 0.45, restRadius = 15.0, restWindow = 0.8
+    /// A deliberate tap is isolated: nothing touched the same spot just before. A hand drumming or a thumb
+    /// bouncing on an edge repeats every ~0.6 s (measured), so it always has an earlier touch there.
+    static let isolationWindow = 0.8, isolationRadius = 15.0
+    /// Fingertip taps measured 0.74–1.03; thumb / palm-heel contacts 1.0–1.7.
+    static let tapMaxSize: Float = 1.25
+    static let doubleTapMinGap = 0.05   // a bouncing finger re-lands faster than a deliberate second tap
     private var multi = MultiFingerRecognizer()
 
     // Momentum (inertia) for repeating edge actions, and speed-up for consecutive slides.
@@ -78,6 +91,7 @@ final class GestureEngine {
 
         lastFrameTime = time
         let touching = contacts.filter { $0.touching }
+        trackRests(touching, time: time)
         let prev = prevCount
         prevCount = touching.count
         if prev > 1 && touching.count <= 1 { multiFingerEndedAt = time }
@@ -132,6 +146,29 @@ final class GestureEngine {
         case .corner(let corner): alive = updateCorner(&s, c, time, cfg, corner)
         }
         if alive { session = s }
+    }
+
+    private func trackRests(_ touching: [Contact], time: Double) {
+        let live = Set(touching.map(\.id))
+        for (id, c) in contactStart where !live.contains(id) {
+            contactStart[id] = nil
+            if time - c.t >= Self.restDuration { recentRests.append((c.x, c.y, time)) }
+            recentTouches.append((c.x, c.y, time))
+        }
+        for c in touching where contactStart[c.id] == nil { contactStart[c.id] = (time, c.xmm, c.ymm) }
+        recentRests.removeAll { time - $0.end > Self.restWindow }
+        recentTouches.removeAll { time - $0.end > Self.isolationWindow + 0.5 }
+    }
+
+    /// Nothing else touched this spot in the moments before this touch began.
+    private func isIsolated(_ s: Session) -> Bool {
+        !recentTouches.contains { $0.end < s.t0 && s.t0 - $0.end <= Self.isolationWindow
+            && hypot(s.sx - $0.x, s.sy - $0.y) <= Self.isolationRadius }
+    }
+
+    /// A tap here right after a finger rested on the same spot is the rest bouncing, not a deliberate tap.
+    private func isRestBounce(_ s: Session) -> Bool {
+        recentRests.contains { s.t0 - $0.end <= Self.restWindow && hypot(s.sx - $0.x, s.sy - $0.y) <= Self.restRadius }
     }
 
     /// Called by the event gate when a real (physical) click happens during a session.
@@ -202,7 +239,11 @@ final class GestureEngine {
         session = nil
         let g = cfg.guardrails
         let duration = time - s.t0
-        let isTap = !s.activated && s.steps == 0 && !s.holdFired && s.maxDist < g.tapSlop
+        let bounce = isRestBounce(s)
+        let bigContact = s.maxSize > min(Self.tapMaxSize, g.palmSize)
+        if bounce { debugLog("tap ignored: resting finger bouncing") }
+        if bigContact { debugLog("tap ignored: thumb / palm-sized contact (\(s.maxSize))") }
+        let isTap = !s.activated && s.steps == 0 && !s.holdFired && s.maxDist < g.tapSlop && !bounce && !bigContact
             && duration >= g.minTap && duration <= g.maxTap
         debugLog("finish \(s.kind) tap=\(isTap) dur=\(String(format: "%.3f", duration)) dist=\(String(format: "%.1f", s.maxDist))mm size=\(s.maxSize)")
 
@@ -345,11 +386,18 @@ final class GestureEngine {
     /// A tap fires at once unless the zone also has a double-tap action; then it waits `window` for a second tap.
     private func zoneTap(_ kind: Kind, _ s: Session, tap: Action, doubleTap: Action, window: Double,
                          haptic: Haptic, gesture: String) {
+        // The second tap of a double-tap naturally follows the first; every other tap must be isolated.
+        let secondTap = pendingTap.map { $0.kind == kind && s.t0 - $0.endedAt <= window } ?? false
+        if !secondTap && !isIsolated(s) {
+            debugLog("tap ignored: not isolated (repeated touches at this spot)")
+            return
+        }
         if doubleTap.isNone {
             fire(tap, haptic: haptic, gesture: gesture, zone: kind, how: "Tap")
             return
         }
-        if let p = pendingTap, p.kind == kind, s.t0 - p.endedAt <= window, hypot(s.sx - p.x, s.sy - p.y) < 8 {
+        if let p = pendingTap, p.kind == kind, s.t0 - p.endedAt <= window, s.t0 - p.endedAt >= Self.doubleTapMinGap,
+           hypot(s.sx - p.x, s.sy - p.y) < 8 {
             p.work.cancel()
             pendingTap = nil
             fire(doubleTap, haptic: .doubleTap, gesture: gesture.replacingOccurrences(of: "Tap", with: "DoubleTap"),
