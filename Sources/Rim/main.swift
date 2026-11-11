@@ -423,6 +423,22 @@ if CommandLine.arguments.contains("--gesture-test") {
     GestureEngine.testConfig = cfg
     check(stroke((0.04, 0.5), (0.04, 0.5), duration: 0.1).isEmpty, "edge with nothing set: tap passes through")
     check(stroke((0.03, 0.97), (0.03, 0.97), duration: 0.1) == ["cornerTap:missionControl"], "corner: tap")
+    // Measured: deliberate repeat taps on a corner 0.3–0.5 s apart, fingertip pressed into the corner (size up to 1.55).
+    func cornerTaps(gaps: [Double], size: Float) -> [String] {
+        fired = []
+        let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 600.0
+        for gap in gaps {
+            for _ in 0..<9 { engine.process([Contact(id: 30, x: 0.99, y: 0.98, state: 4, size: size, xmm: 123.5, ymm: 75.3)], time: t); t += 1.0 / 120 }
+            engine.process([], time: t); t += gap
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        return fired
+    }
+    check(cornerTaps(gaps: [0.35, 0.4, 0.5], size: 0.8).count == 3, "quick deliberate repeat corner taps all count")
+    check(cornerTaps(gaps: [0.5], size: 1.5) == ["cornerTap:missionControl"].map { _ in fired.first ?? "" } && !fired.isEmpty,
+          "fingertip pressed into the corner (size 1.5) counts")
+    check(cornerTaps(gaps: [0.03, 0.5], size: 0.8).count == 1, "a bounce 30 ms after a corner tap is ignored")
     check(stroke((0.03, 0.97), (0.03, 0.97), duration: 0.1, hold: 0.6) == ["cornerHold:lockScreen"], "corner: press & hold (no tap)")
     check(stroke((0.03, 0.97), (0.2, 0.75), duration: 0.2).isEmpty, "corner: moving away cancels")
     let fromCorner = stroke((0.96, 0.06), (0.96, 0.45), duration: 0.4)
