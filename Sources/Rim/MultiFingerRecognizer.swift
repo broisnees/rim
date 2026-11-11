@@ -55,6 +55,9 @@ struct MultiFingerRecognizer {
     private var lifted: [Int32: Finger] = [:]
     private var seqStart = 0.0
     private var lastLanding = 0.0
+    /// The previous two-finger touch: horizontal scrolling is a burst of strokes, a navigation swipe stands alone.
+    private var lastTwoFingerEnd = -100.0
+    private var lastTwoFingerSwipe: Event?
     private var maxConcurrent = 0
     private var invalid = false
     private var fired = false
@@ -76,7 +79,13 @@ struct MultiFingerRecognizer {
         }
 
         if fingers.isEmpty && !lifted.isEmpty && touching.isEmpty {
-            if let e = sequenceEnded(at: time) { events.append(e) }
+            let e = sequenceEnded(at: time)
+            if let e { events.append(e) }
+            // Only sideways strokes count: scrolling down a page and then swiping back is normal.
+            if maxConcurrent == 2 && lifted.values.contains(where: { $0.maxMove > 3 && abs($0.x - $0.x0) > abs($0.y - $0.y0) }) {
+                lastTwoFingerEnd = time
+                lastTwoFingerSwipe = (e == .twoFingerSwipeLeft || e == .twoFingerSwipeRight) ? e : nil
+            }
             reset()
         }
 
@@ -167,6 +176,7 @@ struct MultiFingerRecognizer {
 
     /// Two-finger swipe: a quick, mostly horizontal flick with both fingers moving together.
     /// Slow horizontal scrolling never qualifies, so wide documents and timelines scroll as usual.
+    static let scrollBurstGap = 2.5   // measured: sideways scroll strokes 0.8-2.3 s apart
     static let swipeMinTravel = 18.0, swipeMaxDuration = 0.45, swipeMinSpeed = 110.0, swipeRatio = 3.0
 
     private func twoFingerSwipe(_ all: [Finger], at time: Double) -> Event? {
@@ -178,7 +188,15 @@ struct MultiFingerRecognizer {
               (d[0].dx > 0) == (d[1].dx > 0) else { return nil }
         let travel = (abs(d[0].dx) + abs(d[1].dx)) / 2
         guard travel / dur >= Self.swipeMinSpeed else { return nil }
-        return d[0].dx > 0 ? .twoFingerSwipeRight : .twoFingerSwipeLeft
+        let ev: Event = d[0].dx > 0 ? .twoFingerSwipeRight : .twoFingerSwipeLeft
+        let gap = seqStart - lastTwoFingerEnd
+        // Mid-scroll: another two-finger stroke just before that wasn't a swipe, or a swipe straight back.
+        if gap < Self.scrollBurstGap && (lastTwoFingerSwipe == nil || lastTwoFingerSwipe != ev) {
+            debugLog("two-finger flick ignored: part of scrolling (\(String(format: "%.2f", gap)) s after the last stroke)")
+            return nil
+        }
+        debugLog("two-finger swipe: \(Int(travel)) mm in \(String(format: "%.2f", dur)) s (\(Int(travel / dur)) mm/s), \(String(format: "%.1f", gap)) s after the last stroke")
+        return ev
     }
 
     private func sequenceEnded(at time: Double) -> Event? {

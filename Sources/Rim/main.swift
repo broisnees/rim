@@ -273,6 +273,19 @@ if CommandLine.arguments.contains("--gesture-test") {
     check(simulate(slowSide).isEmpty, "slow sideways two-finger scroll is not a swipe")
     let diag = [F(id: 1, down: 0, up: 0.22, x: 45, y: 30, vx: 140, vy: 90), F(id: 2, down: 0.01, up: 0.22, x: 65, y: 30, vx: 140, vy: 90)]
     check(simulate(diag).isEmpty, "diagonal flick (scrolling) is not a swipe")
+    // Measured: fast horizontal scrolling fired back / forward several times (strokes 0.8-2 s apart, both ways).
+    func shifted(_ f: [F], by dt: Double, ids: Int32) -> [F] {
+        f.map { F(id: $0.id + ids, down: $0.down + dt, up: $0.up + dt, x: $0.x, y: $0.y, vx: $0.vx, vy: $0.vy) }
+    }
+    let scrollThenFlick = shifted(slowSide, by: 0, ids: 0) + shifted(flickL, by: 1.4, ids: 10)
+    check(simulate(scrollThenFlick).isEmpty, "a quick stroke right after scrolling sideways is still scrolling")
+    let backAndForth = flickR + shifted(flickL, by: 0.9, ids: 10) + shifted(flickR, by: 1.8, ids: 20)
+    check(simulate(backAndForth) == ["twoFingerSwipeRight"], "flicking back and forth (scrolling) navigates once at most → \(simulate(backAndForth))")
+    check(simulate(flickR + shifted(flickR, by: 0.8, ids: 10)) == ["twoFingerSwipeRight", "twoFingerSwipeRight"],
+          "two swipes the same way go back twice")
+    check(simulate(slowSide + shifted(flickL, by: 3.6, ids: 10)) == ["twoFingerSwipeLeft"], "a swipe well after scrolling works")
+    let downThenBack = [F(id: 1, down: 0, up: 0.5, x: 55, y: 30, vy: 60), F(id: 2, down: 0.01, up: 0.5, x: 75, y: 30, vy: 60)] + shifted(flickR, by: 0.8, ids: 10)
+    check(simulate(downThenBack) == ["twoFingerSwipeRight"], "scrolling down a page, then swiping back works")
 
     // Measured false positive: both sides of the hands brushing the trackpad's left and right borders at once.
     let brush = [F(id: 1, down: 0, up: 0.09, x: 0.8, y: 61.8, size: 1.13), F(id: 2, down: 0, up: 0.10, x: 122.8, y: 55.5, size: 1.18)]
