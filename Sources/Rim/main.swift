@@ -545,6 +545,22 @@ if CommandLine.arguments.contains("--gesture-test") {
     check(keyLog == ["down:124:0", "up:124:0"], "plain keys carry no modifiers")
     keyEventSink = nil
 
+    // Apple-style haptics: the right system pattern per event, and fast ticks never buzz.
+    var feel: [String] = []
+    Haptics.testSink = { feel.append($0) }
+    var apple = Config(); apple.hapticSettings.style = "apple"
+    let savedCfg = ConfigStore.shared.current
+    ConfigStore.shared.setForTesting(apple)
+    Haptics.play(.bump); Haptics.play(.confirm); Haptics.play(.gesture); Haptics.play(.doubleTap)
+    check(feel == ["levelChange", "generic", "generic", "levelChange"], "ends / holds bump, actions click once → \(feel)")
+    feel = []
+    for _ in 0..<20 { Haptics.play(.tick) }               // 20 steps within a millisecond (a very fast slide)
+    Thread.sleep(forTimeInterval: Haptics.minTickInterval + 0.005)
+    Haptics.play(.tick)
+    check(feel == ["alignment", "alignment"], "a burst of steps gives one tick, not a buzz → \(feel.count) ticks")
+    ConfigStore.shared.setForTesting(savedCfg)
+    Haptics.testSink = nil
+
     // Video keys only reach browser tabs that are video sites (arrow keys would scroll other pages sideways).
     check(SmartActions.isVideoContext(bundle: "com.google.Chrome", windowTitle: "Big Buck Bunny - YouTube")
           && SmartActions.isVideoContext(bundle: "com.apple.Safari", windowTitle: "Netflix")
