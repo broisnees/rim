@@ -32,6 +32,16 @@ struct GesturesPage: View {
         Row(name: "tipTapLeft", title: "Tip-tap left", subtitle: "Rest a finger, tap another to its left", symbol: "hand.point.left"),
         Row(name: "tipTapRight", title: "Tip-tap right", subtitle: "Rest a finger, tap another to its right", symbol: "hand.point.right"),
     ]
+    private let tipSwipes = [
+        Row(name: "tipSwipeRight", title: "Tip-swipe right", subtitle: "Rest a finger, slide the one beside it right", symbol: "arrow.right"),
+        Row(name: "tipSwipeLeft", title: "Tip-swipe left", subtitle: "…slide it left", symbol: "arrow.left"),
+        Row(name: "tipSwipeUp", title: "Tip-swipe up", subtitle: "…slide it up", symbol: "arrow.up"),
+        Row(name: "tipSwipeDown", title: "Tip-swipe down", subtitle: "…slide it down", symbol: "arrow.down"),
+    ]
+    private let twoFingerSwipes = [
+        Row(name: "twoFingerSwipeRight", title: "Two-finger swipe right", subtitle: "Quick flick with two fingers to the right", symbol: "hand.draw"),
+        Row(name: "twoFingerSwipeLeft", title: "Two-finger swipe left", subtitle: "Quick flick with two fingers to the left", symbol: "hand.draw"),
+    ]
     private let hands = [
         Row(name: "twoHandTap", title: "Two-hand tap", subtitle: "One finger from each hand, far apart, together", symbol: "hands.clap"),
     ]
@@ -39,8 +49,15 @@ struct GesturesPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                PageIntro("Multi-finger and two-hand taps. macOS swipes and three-finger drag keep working.", padded: false)
+                PageIntro("Multi-finger and two-hand gestures. macOS swipes and three-finger drag keep working.", padded: false)
                 Spacer()
+                Menu {
+                    ForEach(GesturePreset.all, id: \.name) { p in
+                        Button { p.apply(&model.config.gestures) } label: { Label(p.name, systemImage: p.symbol) }
+                    }
+                } label: { Label("Presets", systemImage: "wand.and.stars") }
+                .fixedSize()
+                .disabled(model.scope != nil)
                 ScopePicker()
             }
             .padding(.horizontal, 20)
@@ -57,6 +74,8 @@ struct GesturesPage: View {
                 }
                 section("Finger Taps", taps)
                 section("Tip-Tap", tipTaps, footer: "Keep one finger resting still for a moment, then tap once with another finger beside it. Great for tabs: left = previous, right = next.")
+                section("Tip-Swipe", tipSwipes, footer: "Keep one finger resting, slide the neighbouring finger. The action repeats as you slide (great for seeking video or volume); the page doesn't scroll meanwhile.")
+                section("Two-Finger Swipe", twoFingerSwipes, footer: "A quick sideways flick; slow sideways scrolling is unaffected. Browsers already go back / forward on this swipe (Trackpad settings → Swipe between pages), so set it per app for apps that don't, e.g. Finder, Xcode, VS Code, Figma or a video player.")
                 section("Two Hands", hands, footer: "Two fingers at least 5.5 cm apart. A normal two-finger tap (right click) is never affected.")
             }
             .formStyle(.grouped)
@@ -206,4 +225,40 @@ private struct CommandRow: View {
             .controlSize(.small)
         }
     }
+}
+
+/// One-click setups for all multi-finger gestures.
+struct GesturePreset {
+    let name: String
+    let symbol: String
+    let actions: [String: Action]
+
+    func apply(_ g: inout Config.Gestures) {
+        g.enabled = true
+        for name in Config.Gestures.names { g.set(name, actions[name] ?? .none) }
+    }
+
+    static let all: [GesturePreset] = [
+        .init(name: "Video", symbol: "play.rectangle", actions: [
+            "tipTapLeft": Action("seekBackward"), "tipTapRight": Action("seekForward"),
+            "tipSwipeLeft": Action("seekBackward"), "tipSwipeRight": Action("seekForward"),
+            "tipSwipeUp": Action("volumeUp"), "tipSwipeDown": Action("volumeDown"),
+            "threeFingerTap": Action("playPause"), "fourFingerTap": Action("videoFullscreen"),
+        ]),
+        .init(name: "Browsing", symbol: "safari", actions: [
+            "tipTapLeft": Action("back"), "tipTapRight": Action("forward"),
+            "tipSwipeLeft": Action("previousTab"), "tipSwipeRight": Action("nextTab"),
+            "tipSwipeUp": Action("scrollTop"), "tipSwipeDown": Action("scrollBottom"),
+            "threeFingerTap": Action("middleClick"), "fourFingerTap": Action("reopenTab"),
+        ]),
+        .init(name: "Editing", symbol: "doc.text", actions: [
+            "tipTapLeft": Action("paste"), "tipTapRight": Action("copy"),
+            "tipSwipeLeft": Action("undo"), "tipSwipeRight": Action("redo"),
+            "tipSwipeUp": Action("pageUp"), "tipSwipeDown": Action("pageDown"),
+            "threeFingerTap": Action("middleClick"), "fourFingerTap": Action("previousApp"),
+        ]),
+        .init(name: "Default", symbol: "arrow.counterclockwise", actions: [
+            "threeFingerTap": Action("middleClick"), "fourFingerTap": Action("previousApp"), "twoHandTap": Action("missionControl"),
+        ]),
+    ]
 }
