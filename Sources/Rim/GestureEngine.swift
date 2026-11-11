@@ -31,6 +31,8 @@ final class GestureEngine {
         var stepAccum = 0.0               // accelerated travel since the last repeating step, mm
         var filter = OneEuroFilter()
         var velocity = VelocityTracker()
+        var preVelocity = VelocityTracker()     // along-edge speed before a slide engages
+        var clicked = false                     // a physical click happened during this touch: a deliberate tap
     }
 
     // Thresholds in millimetres (physical, so they feel the same on every trackpad).
@@ -62,6 +64,9 @@ final class GestureEngine {
     static let cornerIsolationWindow = 0.25
     /// Fingertip taps measured 0.74–1.03; thumb / palm-heel contacts 1.0–1.7.
     static let tapMaxSize: Float = 1.25
+    /// Slides: a resting palm drifts slowly and is big; deliberate slides measured 70–200 mm/s, size ≤ 1.26.
+    static let slideMinSpeed = 20.0, slideMaxSize: Float = 1.35
+    static let sideBorder = 0.007   // fraction of the width (~0.9 mm)
     static let doubleTapMinGap = 0.05   // a bouncing finger re-lands faster than a deliberate second tap
     private var multi = MultiFingerRecognizer()
 
@@ -180,15 +185,42 @@ final class GestureEngine {
         recentRests.contains { s.t0 - $0.end <= Self.restWindow && hypot(s.sx - $0.x, s.sy - $0.y) <= Self.restRadius }
     }
 
-    /// Called by the event gate when a real (physical) click happens during a session.
-    func physicalPress() {
+    enum ClickResult { case consumed, passKeep, cancelled }
+
+    /// A physical click happened during a zone touch. In zones with tap gestures the click *is* the tap:
+    /// it's swallowed when it runs an action (a tap, or the second click of a double-tap) and otherwise passes
+    /// through while the touch still counts as the first tap. Anywhere else the gesture yields to the click.
+    @discardableResult
+    func physicalPress() -> ClickResult {
         lock.lock(); defer { lock.unlock() }
-        guard session != nil else { return }
+        guard var s = session else { return .cancelled }
+        let cfg = Self.testConfig ?? AppContext.shared.effectiveConfig
+        if !s.activated, s.steps == 0, !s.holdFired, let b = tapBindings(s.kind, cfg), cfg.clickZones != "off",
+           cfg.clickZones == "all" || { if case .corner = s.kind { return true } else { return false } }() {
+            s.clicked = true
+            session = s
+            let completesDouble = pendingTap.map { $0.kind == s.kind && s.t0 - $0.endedAt <= cfg.corners.doubleTapWindow } ?? false
+            let consume = !b.tap.isNone || (completesDouble && !b.doubleTap.isNone)
+            debugLog("physical click in \(s.kind): \(consume ? "runs the tap" : "passes through, counts as first tap")")
+            return consume ? .consumed : .passKeep
+        }
         debugLog("physical press -> cancel session")
         session = nil
         ignoreUntilLift = true
         SliderController.shared.end()
         SwitcherHold.release()
+        return .cancelled
+    }
+
+    private func tapBindings(_ kind: Kind, _ cfg: Config) -> (tap: Action, doubleTap: Action)? {
+        switch kind {
+        case .corner(let c):
+            let b = cfg.corners.binding(c)
+            return b.tap.isNone && b.doubleTap.isNone ? nil : (b.tap, b.doubleTap)
+        case .edge(let e):
+            let b = cfg.edges.binding(e)
+            return b.tap.isNone && b.doubleTap.isNone ? nil : (b.tap, b.doubleTap)
+        }
     }
 
     // MARK: - Guards
@@ -257,8 +289,11 @@ final class GestureEngine {
         if bounce { debugLog("tap ignored: resting finger bouncing") }
         if bigContact { debugLog("tap ignored: thumb / palm-sized contact (\(s.maxSize))") }
         // Learned limits can get tight; zone taps always get at least 2 mm of wiggle and 0.25 s.
-        let isTap = !s.activated && s.steps == 0 && !s.holdFired && s.maxDist < max(g.tapSlop, 2.0) && !bounce && !bigContact
-            && duration >= g.minTap && duration <= max(g.maxTap, 0.25)
+        // A physical click is deliberate: it's a tap whatever its size or timing, as long as the finger stayed put.
+        let isTap = s.clicked
+            ? (!s.activated && s.steps == 0 && !s.holdFired && s.maxDist < 4)
+            : (!s.activated && s.steps == 0 && !s.holdFired && s.maxDist < max(g.tapSlop, 2.0) && !bounce && !bigContact
+               && duration >= g.minTap && duration <= max(g.maxTap, 0.25))
         debugLog("finish \(s.kind) tap=\(isTap) dur=\(String(format: "%.3f", duration)) dist=\(String(format: "%.1f", s.maxDist))mm size=\(s.maxSize)")
 
         switch s.kind {
@@ -402,7 +437,7 @@ final class GestureEngine {
                          haptic: Haptic, gesture: String) {
         // The second tap of a double-tap naturally follows the first; every other tap must be isolated.
         let secondTap = pendingTap.map { $0.kind == kind && s.t0 - $0.endedAt <= window } ?? false
-        if !secondTap && !isIsolated(s) {
+        if !secondTap && !s.clicked && !isIsolated(s) {
             debugLog("tap ignored: not isolated (repeated touches at this spot)")
             return
         }
@@ -460,6 +495,7 @@ final class GestureEngine {
         }
         if s.holdFired { return true }
 
+        if !s.activated { s.preVelocity.add(pos, time) }
         if !s.activated {
             let d = pos - along(e, s.sx, s.sy)
             let perp = e.vertical ? abs(c.xmm - s.sx) : abs(c.ymm - s.sy)
@@ -474,6 +510,14 @@ final class GestureEngine {
             if abs(d) < perp * edgeAngle { abort("diagonal, not along the edge"); return false }
             if time - s.t0 > cfg.guardrails.activationWindow { abort("slow drift"); return false }
             guard b.slides else { abort("edge has no slide action"); return false }
+            // A resting palm drifts slowly and is bigger than a fingertip; a deliberate slide is quick.
+            if s.maxSize > Self.slideMaxSize { abort("palm-sized contact can't slide (\(s.maxSize))"); return false }
+            // Measured: the side of a resting hand lies on the very left / right border (centred on the last
+            // millimetre of the sensor). A deliberate finger slides a few mm inside it.
+            if e.vertical, s.sx / widthMM < Self.sideBorder || s.sx / widthMM > 1 - Self.sideBorder {
+                abort("touch on the frame: side of the hand"); return false
+            }
+            guard abs(s.preVelocity.velocity) >= Self.slideMinSpeed else { return true }   // wait for intent (or time out)
 
             s.activated = true
             Haptics.play(.tick)          // the drag has caught: one light tick, like grabbing a slider in macOS

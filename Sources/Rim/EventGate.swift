@@ -253,7 +253,7 @@ final class EventGate {
             let o = owner
             resetLocked()
             debugLog("gate watchdog: released stale capture")
-            DispatchQueue.global().async { o?.physicalPress() }   // let the engine drop its session too
+            DispatchQueue.global().async { _ = o?.physicalPress() }   // let the engine drop its session too
             return false
         }
         return true
@@ -303,12 +303,19 @@ final class EventGate {
             let button = event.getIntegerValueField(.mouseEventButtonNumber)
             let alive = sessionAliveLocked(t)
             if alive && fingerDown {
-                // A press while the finger is still down is a physical click: let it through, give up the gesture.
+                // A physical click during a zone touch: the engine decides whether it is the zone's tap.
                 let o = owner
-                resetLocked()
                 lock.unlock()
-                o?.physicalPress()
-                return pass
+                switch o?.physicalPress() ?? .cancelled {
+                case .consumed:
+                    lock.lock(); dropUp.insert(button); lock.unlock()
+                    return nil                                   // the click ran the zone's action
+                case .passKeep:
+                    return pass                                  // normal click; the touch still counts as a tap
+                case .cancelled:
+                    lock.lock(); resetLocked(); lock.unlock()
+                    return pass                                  // not a tap zone: the click wins
+                }
             }
             if (alive && captureAll) || t < dropClicksUntil {
                 dropUp.insert(button)
