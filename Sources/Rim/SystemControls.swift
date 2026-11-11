@@ -144,8 +144,12 @@ final class SliderController {
     private var detents = Detents(count: 16)
     private var keyFallback = false
 
+    /// Test / replay hook: records slider engagements instead of reading or changing real levels.
+    static var testSink: ((String) -> Void)?
+
     func begin(_ k: Kind) {
         lock.lock(); defer { lock.unlock() }
+        if let sink = Self.testSink { sink("slider:\(k.rawValue)"); kind = nil; return }
         kind = k
         let current = k == .volume ? Volume.get() : k == .brightness ? Brightness.get() : KeyboardLight.get()
         keyFallback = (k == .volume && current == nil)
