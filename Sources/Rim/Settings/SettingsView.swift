@@ -294,6 +294,14 @@ private struct ZoneSettings: View {
             Section {
                 Toggle("Corners", isOn: $model.config.corners.enabled)
                 Toggle("Edges", isOn: $model.config.edges.enabled)
+                Picker("Clicking a zone runs its tap", selection: $model.config.clickZones) {
+                    Text("Corners & edges").tag("all")
+                    Text("Corners only").tag("corners")
+                    Text("Off").tag("off")
+                }
+            } footer: {
+                Text("A physical click in a zone with a tap action runs it instead of clicking. Where only a double-tap is set, a single click stays a normal click and a quick second click runs the double-tap.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section("Corners") {
                 SliderRow(title: "Width", value: $model.config.corners.width.double, range: 0.07...0.25) { "\(Int($0 * 100))%" }
