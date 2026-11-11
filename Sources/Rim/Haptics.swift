@@ -52,11 +52,39 @@ enum Haptics {
 
     static func setup() { forceTouchAvailable = tf_haptic_open() }
 
-    /// Event feedback, using the pattern chosen for that event.
+    /// Test hook: receives the system pattern name ("alignment", "levelChange", "generic") instead of playing.
+    static var testSink: ((String) -> Void)?
+
+    private static let tickLock = NSLock()
+    private static var lastTick = 0.0
+    /// Fast slides and momentum would otherwise buzz: at most one tick per 25 ms.
+    static let minTickInterval = 0.025
+
+    /// Event feedback. Apple style uses macOS's system haptics the way Apple apps do:
+    /// light "alignment" ticks for steps, one firmer "level change" for ends and holds, one "generic" click to
+    /// confirm an action; never multi-pulse for frequent events. Custom style plays the chosen patterns.
     static func play(_ h: Haptic) {
         let cfg = ConfigStore.shared.current
         guard cfg.haptics else { return }
         let s = cfg.hapticSettings
+        if s.style == "apple" {
+            let pattern: NSHapticFeedbackManager.FeedbackPattern
+            switch h {
+            case .tick, .tipTap: pattern = .alignment
+            case .bump, .doubleTap: pattern = .levelChange
+            case .confirm, .media, .gesture: pattern = .generic
+            }
+            if pattern == .alignment {
+                let now = ProcessInfo.processInfo.systemUptime
+                tickLock.lock()
+                let ok = now - lastTick >= minTickInterval
+                if ok { lastTick = now }
+                tickLock.unlock()
+                guard ok else { return }
+            }
+            system(pattern)
+            return
+        }
         let name: String
         switch h {
         case .tick: name = s.sliderStep
@@ -76,6 +104,14 @@ enum Haptics {
             let id: Int32 = level == .light ? settings.light : level == .medium ? settings.medium : settings.strong
             if delay == 0 { pulse(id, level) } else { queue.asyncAfter(deadline: .now() + delay) { pulse(id, level) } }
         }
+    }
+
+    static func system(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+        if let sink = testSink {
+            sink(pattern == .alignment ? "alignment" : pattern == .levelChange ? "levelChange" : "generic")
+            return
+        }
+        DispatchQueue.main.async { NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now) }
     }
 
     static func pulse(_ id: Int32, _ level: HapticPattern.Level = .medium) {

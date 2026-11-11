@@ -135,6 +135,30 @@ struct HapticsPage: View {
                 }
 
                 Section {
+                    Picker("Feel", selection: hb(\.style)) {
+                        Text("Apple (system haptics)").tag("apple")
+                        Text("Custom patterns").tag("custom")
+                    }
+                    if model.config.hapticSettings.style == "apple" {
+                        HStack {
+                            feel { Haptics.system(.alignment) }.overlay(alignment: .trailing) { EmptyView() }
+                            Text("Tick").foregroundStyle(.secondary)
+                            Spacer().frame(width: 16)
+                            feel { Haptics.system(.levelChange) }
+                            Text("End / hold").foregroundStyle(.secondary)
+                            Spacer().frame(width: 16)
+                            feel { Haptics.system(.generic) }
+                            Text("Action").foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    Text(model.config.hapticSettings.style == "apple"
+                         ? "Uses macOS's own haptics like Apple apps: a light tick for each step and when a drag catches, one firmer bump at the ends and for press & hold, one click when an action runs. Fast slides never buzz."
+                         : "Choose a pattern and strength for each event below.")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Section {
                     strength("Light", \.light)
                     strength("Medium", \.medium)
                     strength("Strong", \.strong)
@@ -144,6 +168,7 @@ struct HapticsPage: View {
                     VStack(alignment: .leading) { Text("Each level uses one of the trackpad's built-in pulses. Rest a finger on the trackpad and press Feel to compare.") }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
                 }
 
+                if model.config.hapticSettings.style == "custom" {
                 Section("Feedback for Each Event") {
                     ForEach(events, id: \.0) { title, subtitle, kp in
                         LabeledContent {
@@ -164,6 +189,7 @@ struct HapticsPage: View {
                     }
                 }
                 .disabled(!model.config.haptics)
+                }
 
                 Section {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {

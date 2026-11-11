@@ -467,6 +467,7 @@ final class GestureEngine {
             guard b.slides else { abort("edge has no slide action"); return false }
 
             s.activated = true
+            Haptics.play(.tick)          // the drag has caught: one light tick, like grabbing a slider in macOS
             if b.slide == "actions" && b.repeats {
                 let dir: Double = d > 0 ? 1 : -1
                 if cfg.edges.repeatSpeedup, let l = lastSlide, l.edge == e, l.dir == dir, time - l.end < 0.6 {
