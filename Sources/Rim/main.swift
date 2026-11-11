@@ -322,6 +322,7 @@ if CommandLine.arguments.contains("--gesture-test") {
 
     /// One finger from `from` to `to` (normalized), over `duration`, then lifted.
     func stroke(_ from: (Double, Double), _ to: (Double, Double), duration: Double, hold: Double = 0, settle: Double = 0.02,
+                size: Float = 0.9,
                 then next: ((GestureEngine, Double) -> Void)? = nil) -> [String] {
         fired = []
         let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
@@ -330,7 +331,7 @@ if CommandLine.arguments.contains("--gesture-test") {
         for i in 0...n + Int(hold * 120) {
             let k = min(1, Double(i) / Double(n))
             let x = from.0 + (to.0 - from.0) * k, y = from.1 + (to.1 - from.1) * k
-            engine.process([Contact(id: 7, x: Float(x), y: Float(y), state: 4, size: 0.9, xmm: x * 124.8, ymm: y * 76.8)], time: t)
+            engine.process([Contact(id: 7, x: Float(x), y: Float(y), state: 4, size: size, xmm: x * 124.8, ymm: y * 76.8)], time: t)
             t += 1.0 / 120
         }
         engine.process([], time: t)
@@ -480,12 +481,16 @@ if CommandLine.arguments.contains("--gesture-test") {
         e4.process([], time: t)
         let palmSlide = sliders.count
         sliders = []
-        _ = stroke((0.999, 0.30), (0.999, 0.45), duration: 0.15)                    // measured: hand side on the right border
+        _ = stroke((0.001, 0.30), (0.001, 0.45), duration: 0.15)                    // measured: hand side on the border
         let border = sliders.count
         sliders = []
+        _ = stroke((0.0, 0.30), (0.0, 0.55), duration: 0.3)                         // measured: fingertip slid over the border
+        _ = stroke((0.001, 0.30), (0.001, 0.42), duration: 0.15, size: 1.1)         // full fingertip on the border
+        let borderSlides = sliders.count
+        sliders = []
         _ = stroke((0.03, 0.30), (0.03, 0.60), duration: 0.3)                       // fingertip, ~75 mm/s
-        check(drift == 0 && palmSlide == 0 && border == 0 && sliders == ["slider:brightness"],
-              "slow palm drift and palm-sized slides don't touch brightness; a quick fingertip slide does (\(drift)/\(palmSlide)/\(sliders.count))")
+        check(drift == 0 && palmSlide == 0 && border == 0 && borderSlides == 2 && sliders == ["slider:brightness"],
+              "palm drift, palm-sized slides and a hand side on the border don't touch brightness; fingertip slides do, on the border too (\(drift)/\(palmSlide)/\(border)/\(borderSlides)/\(sliders.count))")
         SliderController.testSink = nil
         palm.edges.left = EdgeBinding()
         GestureEngine.testConfig = cfg

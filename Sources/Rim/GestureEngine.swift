@@ -65,8 +65,9 @@ final class GestureEngine {
     /// Fingertip taps measured 0.74–1.03; thumb / palm-heel contacts 1.0–1.7.
     static let tapMaxSize: Float = 1.25
     /// Slides: a resting palm drifts slowly and is big; deliberate slides measured 70–200 mm/s, size ≤ 1.26.
-    static let slideMinSpeed = 20.0, slideMaxSize: Float = 1.35
-    static let sideBorder = 0.007   // fraction of the width (~0.9 mm)
+    static let slideMinSpeed = 20.0, slideMaxSize: Float = 1.45
+    static let sideBorder = 0.0025   // fraction of the width (~0.3 mm): the very border of the sensor
+    static let borderFingertip: Float = 1.0, borderTravel = 13.0
     static let doubleTapMinGap = 0.05   // a bouncing finger re-lands faster than a deliberate second tap
     private var multi = MultiFingerRecognizer()
 
@@ -512,10 +513,13 @@ final class GestureEngine {
             guard b.slides else { abort("edge has no slide action"); return false }
             // A resting palm drifts slowly and is bigger than a fingertip; a deliberate slide is quick.
             if s.maxSize > Self.slideMaxSize { abort("palm-sized contact can't slide (\(s.maxSize))"); return false }
-            // Measured: the side of a resting hand lies on the very left / right border (centred on the last
-            // millimetre of the sensor). A deliberate finger slides a few mm inside it.
-            if e.vertical, s.sx / widthMM < Self.sideBorder || s.sx / widthMM > 1 - Self.sideBorder {
-                abort("touch on the frame: side of the hand"); return false
+            // Measured: the side of a resting hand lies on the very last fraction of a millimetre of the left /
+            // right border, as a thin sliver (size < 1) that drifts 8-11 mm. A deliberate slide there is either a
+            // full fingertip or travels further, so a border contact waits for one of the two (the travel so far
+            // is applied when it engages, so nothing is lost).
+            if e.vertical, min(s.sx, widthMM - s.sx) / widthMM < Self.sideBorder,
+               s.maxSize < Self.borderFingertip, abs(d) < Self.borderTravel {
+                return true
             }
             guard abs(s.preVelocity.velocity) >= Self.slideMinSpeed else { return true }   // wait for intent (or time out)
 
