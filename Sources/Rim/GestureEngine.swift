@@ -58,6 +58,8 @@ final class GestureEngine {
     /// A deliberate tap is isolated: nothing touched the same spot just before. A hand drumming or a thumb
     /// bouncing on an edge repeats every ~0.6 s (measured), so it always has an earlier touch there.
     static let isolationWindow = 0.8, isolationRadius = 15.0
+    /// Corners aren't rested on: only reject true bounces there, so quick deliberate repeat taps still count.
+    static let cornerIsolationWindow = 0.25
     /// Fingertip taps measured 0.74–1.03; thumb / palm-heel contacts 1.0–1.7.
     static let tapMaxSize: Float = 1.25
     static let doubleTapMinGap = 0.05   // a bouncing finger re-lands faster than a deliberate second tap
@@ -167,7 +169,9 @@ final class GestureEngine {
 
     /// Nothing else touched this spot in the moments before this touch began.
     private func isIsolated(_ s: Session) -> Bool {
-        !recentTouches.contains { $0.end < s.t0 && s.t0 - $0.end <= Self.isolationWindow
+        let window: Double
+        if case .corner = s.kind { window = Self.cornerIsolationWindow } else { window = Self.isolationWindow }
+        return !recentTouches.contains { $0.end < s.t0 && s.t0 - $0.end <= window
             && hypot(s.sx - $0.x, s.sy - $0.y) <= Self.isolationRadius }
     }
 
@@ -245,11 +249,16 @@ final class GestureEngine {
         let g = cfg.guardrails
         let duration = time - s.t0
         let bounce = isRestBounce(s)
-        let bigContact = s.maxSize > min(Self.tapMaxSize, g.palmSize)
+        // Fingertip-size limit is for edges (where thumbs and palms rest); a fingertip pressed into a corner
+        // against the frame measures larger (up to ~1.55), so corners only reject palm-sized contacts.
+        let sizeLimit: Float
+        if case .corner = s.kind { sizeLimit = g.palmSize } else { sizeLimit = min(Self.tapMaxSize, g.palmSize) }
+        let bigContact = s.maxSize > sizeLimit
         if bounce { debugLog("tap ignored: resting finger bouncing") }
         if bigContact { debugLog("tap ignored: thumb / palm-sized contact (\(s.maxSize))") }
-        let isTap = !s.activated && s.steps == 0 && !s.holdFired && s.maxDist < g.tapSlop && !bounce && !bigContact
-            && duration >= g.minTap && duration <= g.maxTap
+        // Learned limits can get tight; zone taps always get at least 2 mm of wiggle and 0.25 s.
+        let isTap = !s.activated && s.steps == 0 && !s.holdFired && s.maxDist < max(g.tapSlop, 2.0) && !bounce && !bigContact
+            && duration >= g.minTap && duration <= max(g.maxTap, 0.25)
         debugLog("finish \(s.kind) tap=\(isTap) dur=\(String(format: "%.3f", duration)) dist=\(String(format: "%.1f", s.maxDist))mm size=\(s.maxSize)")
 
         switch s.kind {
