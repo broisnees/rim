@@ -46,7 +46,9 @@ final class GestureEngine {
 
     private let lock = NSLock()
     private var session: Session?
-    private var ignoreUntilLift = false
+    /// Contacts that were rejected or ended a gesture: ignored until they lift (other fingers still work).
+    private var ignored = Set<Int32>()
+    private var liveIDs = Set<Int32>()
     private var prevCount = 0
     private var multiFingerEndedAt = -100.0
     private var lastFrameTime = 0.0
@@ -70,7 +72,7 @@ final class GestureEngine {
     /// Slides: a resting palm drifts slowly and is big; deliberate slides measured 70–200 mm/s, size ≤ 1.26.
     static let slideMinSpeed = 20.0, slideMaxSize: Float = 1.45
     static let sideBorder = 0.0025   // fraction of the width (~0.3 mm): the very border of the sensor
-    static let borderFingertip: Float = 1.0, borderTravel = 13.0
+    static let borderFingertip: Float = 1.0, borderTravel = 9.0, borderFlickTime = 0.4
     static let doubleTapMinGap = 0.05   // a bouncing finger re-lands faster than a deliberate second tap
     private var multi = MultiFingerRecognizer()
 
@@ -105,7 +107,7 @@ final class GestureEngine {
         trackRests(touching, time: time)
         let prev = prevCount
         prevCount = touching.count
-        if prev > 1 && touching.count <= 1 { multiFingerEndedAt = time }
+        if prev > 1 && touching.count <= 1 && session == nil { multiFingerEndedAt = time }
         if prev == 0 && !touching.isEmpty && momentum != nil { momentum = nil }   // a new touch stops momentum
 
         var cfg = Self.testConfig ?? AppContext.shared.effectiveConfig
@@ -129,17 +131,18 @@ final class GestureEngine {
         // While a tip-swipe slides, the moving finger would also scroll the page: hold scrolling back.
         if multi.tipSwipeActive && cfg.gestures.enabled { gate.dropScroll(for: 0.6) }
 
-        if ignoreUntilLift {
-            if touching.isEmpty { ignoreUntilLift = false }
-            return
-        }
+        liveIDs = Set(touching.map(\.id))
+        ignored.formIntersection(liveIDs)
 
         guard var s = session else {
-            if prev == 0, touching.count == 1, let c = touching.first, cfg.enabled, gate.isRunning || Self.testConfig != nil,
+            // A zone touch starts alone, or while other fingers rest far away (a thumb, the other hand).
+            if cfg.enabled, gate.isRunning || Self.testConfig != nil, prev == touching.count - 1,
+               let c = touching.first(where: { contactStart[$0.id]?.t == time }) ?? (prev == 0 ? touching.first : nil),
+               !ignored.contains(c.id), touching.allSatisfy({ $0.id == c.id || isBystander($0, of: c, cfg) }),
                let kind = zone(c.x, c.y, cfg) {
                 if let reason = rejectStart(c, time: time, cfg: cfg) {
                     debugLog("reject \(kind): \(reason)")
-                    ignoreUntilLift = true
+                    ignored.insert(c.id)
                 } else {
                     begin(kind, c, time, cfg)
                 }
@@ -148,9 +151,27 @@ final class GestureEngine {
         }
 
         gate.heartbeat()
-        if touching.count > 1 { abort("second finger"); return }
-        guard let c = touching.first else { finish(s, time: time, cfg: cfg); return }
-        guard c.id == s.id else { abort("finger changed"); return }
+        guard let c = touching.first(where: { $0.id == s.id }) else {
+            if touching.isEmpty { finish(s, time: time, cfg: cfg) } else { abort("finger changed") }
+            return
+        }
+        // A finger that has just been resting in a zone (a thumb on the bottom edge) hands over to a new
+        // touch in another zone far away: that one is the gesture.
+        if !s.activated, s.steps == 0, !s.holdFired, time - s.t0 > 0.3,
+           let n = touching.first(where: { $0.id != s.id && contactStart[$0.id]?.t == time }),
+           touching.allSatisfy({ $0.id == n.id || isBystander($0, of: n, cfg) }),
+           let kind = zone(n.x, n.y, cfg), rejectStart(n, time: time, cfg: cfg) == nil {
+            abort("resting finger: hands over to the new touch")
+            ignored.remove(n.id)
+            begin(kind, n, time, cfg)
+            return
+        }
+        if touching.count > 1, s.activated, case .edge(let e) = s.kind, cfg.edges.binding(e).isSwitcher {
+            abort("second finger: app switcher cancelled"); return
+        }
+        if let near = touching.first(where: { $0.id != s.id && !isBystander($0, of: c, cfg) }) {
+            abort("second finger \(Int(hypot(near.xmm - c.xmm, near.ymm - c.ymm))) mm away (size \(near.size))"); return
+        }
 
         s.maxDist = max(s.maxDist, hypot(c.xmm - s.sx, c.ymm - s.sy))
         s.maxSize = max(s.maxSize, c.size)
@@ -215,7 +236,7 @@ final class GestureEngine {
         }
         debugLog("physical press -> cancel session")
         session = nil
-        ignoreUntilLift = true
+        ignored.formUnion(liveIDs)
         SliderController.shared.end()
         SwitcherHold.release()
         return .cancelled
@@ -233,6 +254,13 @@ final class GestureEngine {
     }
 
     // MARK: - Guards
+
+    /// A finger resting far from the zone finger (a thumb, the other hand) doesn't stop a zone gesture.
+    /// Close ones can be part of a two-finger gesture; palm-sized ones mean a resting hand.
+    static let bystanderDistance = 40.0
+    private func isBystander(_ o: Contact, of c: Contact, _ cfg: Config) -> Bool {
+        hypot(o.xmm - c.xmm, o.ymm - c.ymm) >= Self.bystanderDistance && o.size <= cfg.guardrails.palmSize
+    }
 
     private func rejectStart(_ c: Contact, time: Double, cfg: Config) -> String? {
         let g = cfg.guardrails
@@ -279,7 +307,7 @@ final class GestureEngine {
         // Not a gesture after all (nothing ran yet): hand the held-back pointer motion back.
         let giveBack = session.map { !$0.activated && $0.steps == 0 && !$0.holdFired } ?? false
         session = nil
-        ignoreUntilLift = true
+        ignored.formUnion(liveIDs)
         gate.end(dropClicksFor: 0, giveBack: giveBack)
         SliderController.shared.end()
         SwitcherHold.release()
@@ -538,11 +566,13 @@ final class GestureEngine {
             // is applied when it engages, so nothing is lost).
             if e.vertical, min(s.sx, widthMM - s.sx) / widthMM < Self.sideBorder,
                s.maxSize < Self.borderFingertip, abs(d) < Self.borderTravel {
+                if time - s.t0 > Self.borderFlickTime { abort("slow sliver on the border: resting hand"); return false }
                 return true
             }
             guard abs(s.preVelocity.velocity) >= Self.slideMinSpeed else { return true }   // wait for intent (or time out)
 
             s.activated = true
+            debugLog("slide engages: size \(s.maxSize) speed \(Int(abs(s.preVelocity.velocity))) after \(String(format: "%.2f", time - s.t0)) s, x \(String(format: "%.3f", s.sx / widthMM))")
             Haptics.play(.tick)          // the drag has caught: one light tick, like grabbing a slider in macOS
             if b.slide == "actions" && b.repeats {
                 let dir: Double = d > 0 ? 1 : -1
