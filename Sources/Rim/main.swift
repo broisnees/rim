@@ -254,6 +254,9 @@ if CommandLine.arguments.contains("--gesture-test") {
 
     let rightClick = [F(id: 1, down: 0, up: 0.12, x: 55, y: 40), F(id: 2, down: 0.01, up: 0.12, x: 75, y: 40)]
     check(simulate(rightClick).isEmpty, "normal two-finger tap (right click, 20 mm apart) untouched")
+    // Measured false positive: both sides of the hands brushing the trackpad's left and right borders at once.
+    let brush = [F(id: 1, down: 0, up: 0.09, x: 0.8, y: 61.8, size: 1.13), F(id: 2, down: 0, up: 0.10, x: 122.8, y: 55.5, size: 1.18)]
+    check(simulate(brush).isEmpty, "hands brushing both sides of the trackpad is not a two-hand tap")
     let twoHands = [F(id: 1, down: 0, up: 0.14, x: 20, y: 35), F(id: 2, down: 0.02, up: 0.15, x: 105, y: 38)]
     check(simulate(twoHands) == ["twoHandTap"], "two-hand tap (85 mm apart)")
     let scroll = [F(id: 1, down: 0, up: 0.5, x: 55, y: 40, vy: 60), F(id: 2, down: 0.01, up: 0.5, x: 75, y: 40, vy: 60)]
@@ -275,10 +278,15 @@ if CommandLine.arguments.contains("--gesture-test") {
           "pointing finger moving + tap = normal click, not tip-tap")
     check(simulate([rest, F(id: 2, down: 0.4, up: 0.9, x: 82, y: 38)]).isEmpty, "second finger held 0.5 s is not a tip-tap")
     check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 115, y: 38)]).isEmpty, "tap 55 mm away (another hand) is not a tip-tap")
-    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 95, y: 36)]).isEmpty, "tap 35 mm away (not the neighbouring finger) is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 106, y: 36)]).isEmpty, "tap 46 mm away (not the neighbouring finger) is not a tip-tap")
+    // The user's measured tip-taps (relative to the resting finger): all must count.
+    let measured: [(Double, Double, String)] = [(-24.8, -10.8, "tipTapLeft"), (-23.7, -9.4, "tipTapLeft"), (10.1, 15.6, "tipTapRight"),
+                                                (11.5, 13.1, "tipTapRight"), (-22.1, -22.1, "tipTapLeft"), (-10.9, -21.7, "tipTapLeft")]
+    let hits = measured.filter { dx, dy, want in simulate([rest, F(id: 2, down: 0.4, up: 0.51, x: 60 + dx, y: 35 + dy)]) == [want] }.count
+    check(hits == measured.count, "all \(measured.count) of your measured tip-taps are recognised (\(hits)/\(measured.count))")
     check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 78, y: 37)]) == ["tipTapRight"], "neighbouring finger 18 mm away is a tip-tap")
     check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 68, y: 36)]).isEmpty, "tap 8 mm away (same finger rolling) is not a tip-tap")
-    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 75, y: 70)]).isEmpty, "tap far above the resting finger is not a tip-tap")
+    check(simulate([rest, F(id: 2, down: 0.4, up: 0.52, x: 70, y: 70)]).isEmpty, "tap far above the resting finger is not a tip-tap")
 
     // ---- Zone engine: edges, corners, hold (actions are recorded, never run) ----
     var fired: [String] = []
