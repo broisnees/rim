@@ -231,6 +231,8 @@ struct Config: Codable, Equatable {
     var apps: [String: AppRule] = [:]
     /// Per-app key overrides for smart actions: bundle id -> action type -> key combo.
     var smartKeys: [String: [String: String]] = [:]
+    /// Physical clicks in a zone run its tap / double-tap: "off", "corners" or "all" (corners and edges).
+    var clickZones = "corners"
     /// Set once the user moves the top/bottom height slider themselves; until then Rim may raise the default.
     var edgeHeightCustomized = false
 }
