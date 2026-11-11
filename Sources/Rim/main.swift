@@ -47,13 +47,11 @@ if let i = CommandLine.arguments.firstIndex(of: "--replay"), i + 1 < CommandLine
     ConfigStore.shared.load()
     var cfg = ConfigStore.shared.current
     cfg.guardrails.adaptive = false
-    // Never touch real volume / brightness during a replay: continuous edges are reported, not applied.
-    for e in Edge.allCases where cfg.edges.binding(e).continuous {
-        var b = cfg.edges.binding(e); b.slide = "none"; cfg.edges.setBinding(b, for: e)
-    }
     GestureEngine.testConfig = cfg
     var fired: [String] = []
     GestureEngine.testSink = { g, a in fired.append("\(g) → \(a.type)") }
+    // Sliders are reported, never applied: replays can't change real volume / brightness.
+    SliderController.testSink = { fired.append($0) }
     let text = (try? String(contentsOfFile: CommandLine.arguments[i + 1], encoding: .utf8)) ?? ""
     var frames: [(Double, [Contact])] = []
     for line in text.split(separator: "\n").dropFirst() {
@@ -423,6 +421,76 @@ if CommandLine.arguments.contains("--gesture-test") {
     GestureEngine.testConfig = cfg
     check(stroke((0.04, 0.5), (0.04, 0.5), duration: 0.1).isEmpty, "edge with nothing set: tap passes through")
     check(stroke((0.03, 0.97), (0.03, 0.97), duration: 0.1) == ["cornerTap:missionControl"], "corner: tap")
+    // Physical clicks in zones: a corner click runs its tap; the gate swallows that click.
+    do {
+        var cc = cfg; cc.clickZones = "all"
+        GestureEngine.testConfig = cc
+        fired = []
+        let engine = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 700.0
+        let corner = { Contact(id: 40, x: 0.03, y: 0.97, state: 4, size: 1.4, xmm: 3.7, ymm: 74.5) }
+        for _ in 0..<6 { engine.process([corner()], time: t); t += 1.0 / 120 }
+        let r = engine.physicalPress()
+        for _ in 0..<20 { engine.process([corner()], time: t); t += 1.0 / 120 }     // a press lasts longer than a tap
+        engine.process([], time: t)
+        Thread.sleep(forTimeInterval: 0.1)
+        check(r == .consumed && fired == ["cornerTap:missionControl"], "clicking a corner runs its tap (click swallowed) → \(fired)")
+        // Bottom edge with only a double-tap action: first click passes through, a second click runs it.
+        var dbl = cc; dbl.edges.bottom.tap = .none; dbl.edges.bottom.doubleTap = Action("mute")
+        GestureEngine.testConfig = dbl
+        fired = []
+        let e2 = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var results: [GestureEngine.ClickResult] = []
+        for _ in 0..<2 {
+            let edge = { Contact(id: 41, x: 0.5, y: 0.04, state: 4, size: 0.9, xmm: 62.4, ymm: 3.1) }
+            for _ in 0..<5 { e2.process([edge()], time: t); t += 1.0 / 120 }
+            results.append(e2.physicalPress())
+            for _ in 0..<10 { e2.process([edge()], time: t); t += 1.0 / 120 }
+            e2.process([], time: t); t += 0.12
+        }
+        Thread.sleep(forTimeInterval: 0.4)
+        check(results == [.passKeep, .consumed] && fired == ["edgeDoubleTap:mute"],
+              "double-click on a double-tap edge: first click passes, second runs the action → \(results) \(fired)")
+        var off = cc; off.clickZones = "corners"
+        GestureEngine.testConfig = off
+        let e3 = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        let edge = { Contact(id: 42, x: 0.5, y: 0.04, state: 4, size: 0.9, xmm: 62.4, ymm: 3.1) }
+        for _ in 0..<5 { e3.process([edge()], time: t); t += 1.0 / 120 }
+        check(e3.physicalPress() == .cancelled, "with clicks set to corners only, an edge click stays a normal click")
+        GestureEngine.testConfig = cfg
+    }
+
+    // A resting palm drifting slowly on the left edge must not move brightness; a quick fingertip slide does.
+    do {
+        var bc = cfg; bc.edges.left = EdgeBinding(slide: "brightness")
+        GestureEngine.testConfig = bc
+        var sliders: [String] = []
+        SliderController.testSink = { sliders.append($0) }
+        _ = stroke((0.03, 0.40), (0.03, 0.43), duration: 0.5)                       // 2.3 mm drift at ~5 mm/s
+        let drift = sliders.count
+        sliders = []
+        var palm = bc
+        GestureEngine.testConfig = palm
+        let e4 = GestureEngine(widthMM: 124.8, heightMM: 76.8)
+        var t = 800.0
+        for i in 0...40 {                                                           // palm-sized, quick
+            let y = 0.4 + Double(i) * 0.004
+            e4.process([Contact(id: 50, x: 0.03, y: Float(y), state: 4, size: 1.6, xmm: 3.7, ymm: y * 76.8)], time: t); t += 1.0 / 120
+        }
+        e4.process([], time: t)
+        let palmSlide = sliders.count
+        sliders = []
+        _ = stroke((0.999, 0.30), (0.999, 0.45), duration: 0.15)                    // measured: hand side on the right border
+        let border = sliders.count
+        sliders = []
+        _ = stroke((0.03, 0.30), (0.03, 0.60), duration: 0.3)                       // fingertip, ~75 mm/s
+        check(drift == 0 && palmSlide == 0 && border == 0 && sliders == ["slider:brightness"],
+              "slow palm drift and palm-sized slides don't touch brightness; a quick fingertip slide does (\(drift)/\(palmSlide)/\(sliders.count))")
+        SliderController.testSink = nil
+        palm.edges.left = EdgeBinding()
+        GestureEngine.testConfig = cfg
+    }
+
     // Measured: deliberate repeat taps on a corner 0.3–0.5 s apart, fingertip pressed into the corner (size up to 1.55).
     func cornerTaps(gaps: [Double], size: Float) -> [String] {
         fired = []
