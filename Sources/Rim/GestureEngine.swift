@@ -101,6 +101,7 @@ final class GestureEngine {
         cfg.guardrails = Learner.shared.guardrails(cfg.guardrails)
 
         // Multi-finger taps run on every frame, independent of zone sessions.
+        multi.tipSwipeStep = max(5, cfg.gestures.tipSwipeStepMM)
         let events = multi.process(touching, time: time, typing: gate.secondsSinceKey < cfg.guardrails.typingPause,
                                    palmSize: cfg.guardrails.palmSize)
         if cfg.enabled && cfg.gestures.enabled {
@@ -109,9 +110,13 @@ final class GestureEngine {
                 guard !action.isNone else { continue }
                 gate.dropClicks(for: 0.45)   // swallow the click/right-click macOS makes for the same tap
                 let tip = e == .tipTapLeft || e == .tipTapRight
-                fire(action, haptic: tip ? .tipTap : .gesture, gesture: e.rawValue, how: e.rawValue)
+                let swipeStep = e.rawValue.hasPrefix("tipSwipe")
+                if e == .twoFingerSwipeLeft || e == .twoFingerSwipeRight { gate.dropScroll(for: 0.5) }   // cut the flick's momentum
+                fire(action, haptic: swipeStep ? .tick : tip ? .tipTap : .gesture, gesture: e.rawValue, how: e.rawValue)
             }
         }
+        // While a tip-swipe slides, the moving finger would also scroll the page: hold scrolling back.
+        if multi.tipSwipeActive && cfg.gestures.enabled { gate.dropScroll(for: 0.6) }
 
         if ignoreUntilLift {
             if touching.isEmpty { ignoreUntilLift = false }

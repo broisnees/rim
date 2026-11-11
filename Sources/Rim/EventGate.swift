@@ -22,6 +22,7 @@ final class EventGate {
     private var fingerDown = false
     private weak var owner: GestureEngine?
     private var dropClicksUntil: TimeInterval = 0
+    private var dropScrollUntil: TimeInterval = 0
     private var dropUp: Set<Int64> = []
     private var pinnedCursor: CGPoint?
     private var held = CGVector(dx: 0, dy: 0)     // pointer motion swallowed during this session
@@ -199,6 +200,11 @@ final class EventGate {
         }
     }
 
+    /// Swallow scrolling (incl. momentum) for a moment: a tip-swipe's sliding finger must not scroll the page.
+    func dropScroll(for seconds: TimeInterval) {
+        lock.lock(); dropScrollUntil = max(dropScrollUntil, now + seconds); lock.unlock()
+    }
+
     /// Swallow clicks for a moment without touching session state (multi-finger taps).
     func dropClicks(for seconds: TimeInterval) {
         lock.lock(); dropClicksUntil = max(dropClicksUntil, now + seconds); lock.unlock()
@@ -279,7 +285,7 @@ final class EventGate {
             if type == .scrollWheel && event.getIntegerValueField(.eventSourceUnixProcessID) == Int64(getpid()) {
                 lock.unlock(); return pass
             }
-            let drop = captureAll && sessionAliveLocked(t)
+            let drop = (captureAll && sessionAliveLocked(t)) || (type == .scrollWheel && t < dropScrollUntil)
             let pin = pinnedCursor
             if drop && type != .scrollWheel {
                 held.dx += event.getDoubleValueField(.mouseEventDeltaX)
