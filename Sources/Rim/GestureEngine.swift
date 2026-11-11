@@ -56,6 +56,9 @@ final class GestureEngine {
     private var contactStart: [Int32: (t: Double, x: Double, y: Double)] = [:]
     private var recentRests: [(x: Double, y: Double, end: Double)] = []
     private var recentTouches: [(x: Double, y: Double, end: Double)] = []
+    /// Where and when a zone tap / double-tap ran: the touches that made it don't count against the next tap,
+    /// so double-tapping again right after works (measured: repeats come 0.5-0.6 s apart).
+    private var usedTaps: [(x: Double, y: Double, t: Double)] = []
     static let restDuration = 0.45, restRadius = 15.0, restWindow = 0.8
     /// A deliberate tap is isolated: nothing touched the same spot just before. A hand drumming or a thumb
     /// bouncing on an edge repeats every ~0.6 s (measured), so it always has an earlier touch there.
@@ -63,7 +66,7 @@ final class GestureEngine {
     /// Corners aren't rested on: only reject true bounces there, so quick deliberate repeat taps still count.
     static let cornerIsolationWindow = 0.25
     /// Fingertip taps measured 0.74–1.03; thumb / palm-heel contacts 1.0–1.7.
-    static let tapMaxSize: Float = 1.25
+    static let tapMaxSize: Float = 1.35
     /// Slides: a resting palm drifts slowly and is big; deliberate slides measured 70–200 mm/s, size ≤ 1.26.
     static let slideMinSpeed = 20.0, slideMaxSize: Float = 1.45
     static let sideBorder = 0.0025   // fraction of the width (~0.3 mm): the very border of the sensor
@@ -171,14 +174,19 @@ final class GestureEngine {
         for c in touching where contactStart[c.id] == nil { contactStart[c.id] = (time, c.xmm, c.ymm) }
         recentRests.removeAll { time - $0.end > Self.restWindow }
         recentTouches.removeAll { time - $0.end > Self.isolationWindow + 0.5 }
+        usedTaps.removeAll { time - $0.t > Self.isolationWindow + 1.5 }
     }
 
     /// Nothing else touched this spot in the moments before this touch began.
-    private func isIsolated(_ s: Session) -> Bool {
+    private func isIsolated(_ s: Session, ignoringUsed: Bool = false) -> Bool {
         let window: Double
         if case .corner = s.kind { window = Self.cornerIsolationWindow } else { window = Self.isolationWindow }
-        return !recentTouches.contains { $0.end < s.t0 && s.t0 - $0.end <= window
-            && hypot(s.sx - $0.x, s.sy - $0.y) <= Self.isolationRadius }
+        return !recentTouches.contains { touch in
+            touch.end < s.t0 && s.t0 - touch.end <= window
+                && hypot(s.sx - touch.x, s.sy - touch.y) <= Self.isolationRadius
+                && !(ignoringUsed && usedTaps.contains { touch.end <= $0.t + 0.05 && $0.t - touch.end <= 1.0
+                    && hypot(touch.x - $0.x, touch.y - $0.y) <= Self.isolationRadius })
+        }
     }
 
     /// A tap here right after a finger rested on the same spot is the rest bouncing, not a deliberate tap.
@@ -430,7 +438,10 @@ final class GestureEngine {
 
     // MARK: - Double tap (corners and edges)
 
-    private struct PendingTap { let kind: Kind; let endedAt: Double; let x: Double; let y: Double; let work: DispatchWorkItem }
+    private struct PendingTap {
+        let kind: Kind; let endedAt: Double; let x: Double; let y: Double; let work: DispatchWorkItem
+        var provisional = false     // may only become a double-tap
+    }
     private var pendingTap: PendingTap?
 
     /// A tap fires at once unless the zone also has a double-tap action; then it waits `window` for a second tap.
@@ -438,11 +449,16 @@ final class GestureEngine {
                          haptic: Haptic, gesture: String) {
         // The second tap of a double-tap naturally follows the first; every other tap must be isolated.
         let secondTap = pendingTap.map { $0.kind == kind && s.t0 - $0.endedAt <= window } ?? false
-        if !secondTap && !s.clicked && !isIsolated(s) {
+        let isolated = s.clicked || isIsolated(s)
+        // Right after a tap gesture ran here, the touches that made it don't count: this tap may start another
+        // double-tap, but can't fire alone (a drumming hand also taps every ~0.6 s; it doesn't double-tap twice).
+        let afterGesture = !isolated && isIsolated(s, ignoringUsed: true)
+        if !secondTap && !isolated && !(afterGesture && !doubleTap.isNone) {
             debugLog("tap ignored: not isolated (repeated touches at this spot)")
             return
         }
         if doubleTap.isNone {
+            usedTaps.append((s.sx, s.sy, lastFrameTime))
             fire(tap, haptic: haptic, gesture: gesture, zone: kind, how: "Tap")
             return
         }
@@ -450,13 +466,14 @@ final class GestureEngine {
            hypot(s.sx - p.x, s.sy - p.y) < 8 {
             p.work.cancel()
             pendingTap = nil
+            usedTaps.append((s.sx, s.sy, lastFrameTime))
             fire(doubleTap, haptic: .doubleTap, gesture: gesture.replacingOccurrences(of: "Tap", with: "DoubleTap"),
                  zone: kind, how: "Double-tap")
             return
         }
         pendingTap?.work.cancel()
         let work = DispatchWorkItem { [weak self] in self?.firePendingTap(kind, haptic: haptic, gesture: gesture) }
-        pendingTap = PendingTap(kind: kind, endedAt: lastFrameTime, x: s.sx, y: s.sy, work: work)
+        pendingTap = PendingTap(kind: kind, endedAt: lastFrameTime, x: s.sx, y: s.sy, work: work, provisional: !secondTap && !isolated)
         DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + window, execute: work)
     }
 
@@ -466,11 +483,13 @@ final class GestureEngine {
         // A second touch is already down in this zone: let its finish decide.
         if let s = session, s.kind == kind {
             let work = DispatchWorkItem { [weak self] in self?.firePendingTap(kind, haptic: haptic, gesture: gesture) }
-            pendingTap = PendingTap(kind: p.kind, endedAt: p.endedAt, x: p.x, y: p.y, work: work)
+            pendingTap = PendingTap(kind: p.kind, endedAt: p.endedAt, x: p.x, y: p.y, work: work, provisional: p.provisional)
             DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.05, execute: work)
             return
         }
         pendingTap = nil
+        if p.provisional { debugLog("tap ignored: lone tap right after a gesture here"); return }
+        usedTaps.append((p.x, p.y, p.endedAt))
         let cfg = Self.testConfig ?? AppContext.shared.effectiveConfig
         let tap: Action
         switch kind {
