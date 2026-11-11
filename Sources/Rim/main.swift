@@ -254,6 +254,28 @@ if CommandLine.arguments.contains("--gesture-test") {
 
     let rightClick = [F(id: 1, down: 0, up: 0.12, x: 55, y: 40), F(id: 2, down: 0.01, up: 0.12, x: 75, y: 40)]
     check(simulate(rightClick).isEmpty, "normal two-finger tap (right click, 20 mm apart) untouched")
+    // Tip-swipe: rest one finger, slide the neighbour; steps every 10 mm along the slide.
+    let restF = F(id: 1, down: 0, up: 1.6, x: 60, y: 35)
+    let swipeR = simulate([restF, F(id: 2, down: 0.4, up: 1.1, x: 80, y: 37, vx: 50)])
+    check(swipeR.filter { $0 == "tipSwipeRight" }.count == 3 && !swipeR.contains("tipTapRight"),
+          "tip-swipe right: 35 mm slide → 3 steps, not a tip-tap → \(swipeR)")
+    check(simulate([restF, F(id: 2, down: 0.4, up: 1.0, x: 80, y: 30, vy: 40)]).filter { $0 == "tipSwipeUp" }.count == 2, "tip-swipe up")
+    check(simulate([restF, F(id: 2, down: 0.4, up: 1.0, x: 40, y: 37, vx: -40)]).allSatisfy { $0 == "tipSwipeLeft" }, "tip-swipe left")
+    check(simulate([F(id: 1, down: 0, up: 0.8, x: 55, y: 40, vy: 60), F(id: 2, down: 0.01, up: 0.8, x: 75, y: 40, vy: 60)]).isEmpty,
+          "normal two-finger scroll is not a tip-swipe")
+    check(simulate([F(id: 1, down: 0, up: 1.6, x: 60, y: 35, vx: 20), F(id: 2, down: 0.4, up: 1.1, x: 80, y: 37, vx: 50)]).isEmpty,
+          "both fingers sliding is not a tip-swipe")
+
+    // Two-finger swipe: quick horizontal flick → event; slow horizontal or vertical scrolling → nothing.
+    let flickR = [F(id: 1, down: 0, up: 0.22, x: 45, y: 40, vx: 140), F(id: 2, down: 0.01, up: 0.22, x: 65, y: 40, vx: 140)]
+    check(simulate(flickR) == ["twoFingerSwipeRight"], "two-finger flick right")
+    let flickL = [F(id: 1, down: 0, up: 0.22, x: 80, y: 40, vx: -140), F(id: 2, down: 0.01, up: 0.22, x: 100, y: 40, vx: -140)]
+    check(simulate(flickL) == ["twoFingerSwipeLeft"], "two-finger flick left")
+    let slowSide = [F(id: 1, down: 0, up: 0.9, x: 40, y: 40, vx: 40), F(id: 2, down: 0.01, up: 0.9, x: 60, y: 40, vx: 40)]
+    check(simulate(slowSide).isEmpty, "slow sideways two-finger scroll is not a swipe")
+    let diag = [F(id: 1, down: 0, up: 0.22, x: 45, y: 30, vx: 140, vy: 90), F(id: 2, down: 0.01, up: 0.22, x: 65, y: 30, vx: 140, vy: 90)]
+    check(simulate(diag).isEmpty, "diagonal flick (scrolling) is not a swipe")
+
     // Measured false positive: both sides of the hands brushing the trackpad's left and right borders at once.
     let brush = [F(id: 1, down: 0, up: 0.09, x: 0.8, y: 61.8, size: 1.13), F(id: 2, down: 0, up: 0.10, x: 122.8, y: 55.5, size: 1.18)]
     check(simulate(brush).isEmpty, "hands brushing both sides of the trackpad is not a two-hand tap")
